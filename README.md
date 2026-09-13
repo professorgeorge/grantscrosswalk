@@ -246,9 +246,5 @@ Conceptualization and development: [Professor Babu George](https://www.linkedin.
 
 ## License
 
-Provided as-is for the author to use, modify, and deploy. No warranty, express
-or implied. This tool is intended to support, not replace, human judgment in
-funding, hiring, and research-partnership decisions; to the fullest extent
-permitted by law, the developer and any affiliated institution disclaim
-liability for any loss, damage, or claim arising from its use or from
-decisions made in reliance on its output.
+This tool is provided "as is," without warranty of any kind, express or implied, including but not limited to warranties of accuracy, merchantability, or fitness for a particular purpose. It is intended to support, not replace, human judgment in funding, hiring, and research-partnership decisions. The developer disclaims all liability for any loss, damage, or claim of any kind arising from use of this tool or reliance on its output.
+
