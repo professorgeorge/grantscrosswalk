@@ -112,7 +112,7 @@
           <div class="btn-row">
             <button class="btn secondary small" id="exportRosterBtn">Export roster (JSON)</button>
             <button class="btn secondary small" id="importRosterBtn">Import</button>
-            <button class="btn danger small" id="clearRosterBtn" title="Clear all scholars, loaded opportunities, and analysis results (preserves settings)">Clear all data</button>
+            <button class="btn danger small" id="clearRosterBtn" title="Clear all scholars, loaded opportunities, and analysis results">Clear all data</button>
           </div>
           <input type="file" id="importInput" accept=".json" hidden />
         </div>
@@ -269,6 +269,18 @@
             <button class="btn secondary small" id="llmTestBtn">Test connection</button>
           </div>
           <p class="hint" id="llmStatus" style="margin-top:10px"></p>
+
+          <details id="ollamaHelp" style="margin-top:12px;padding:10px 14px;background:var(--bg-surface-subtle);border:1px solid var(--border-subtle);border-radius:8px;font-size:0.83rem;line-height:1.45">
+            <summary style="cursor:pointer;font-weight:600;color:var(--text-secondary)">Using Ollama with the hosted GitHub version?</summary>
+            <div style="margin-top:8px;color:var(--text-secondary)">
+              <p style="margin:0 0 6px">Because GitHub Pages runs over HTTPS, browsers block unencrypted HTTP calls to <code>http://localhost</code> by default. To connect:</p>
+              <ul style="margin:0 0 4px;padding-left:18px">
+                <li><strong>Local App:</strong> Run the app locally at <code>http://localhost:8000</code> (via <code>launch-pwa.bat</code> or <code>node server.js</code>) to connect directly with zero configuration.</li>
+                <li><strong>In Chrome/Edge:</strong> Click the sliders/tune icon next to the address bar &rarr; <em>Site settings</em> &rarr; set <em>Insecure content</em> to <strong>Allow</strong>. Add <code>OLLAMA_ORIGINS=*</code> to your Windows environment variables.</li>
+                <li><strong>HTTPS Tunnel:</strong> Run <code>npx -y cloudflared tunnel --url http://localhost:11434</code> and paste the <code>https://.../v1</code> URL into Base URL above.</li>
+              </ul>
+            </div>
+          </details>
         </div>
 
         <div class="card pad">
@@ -298,8 +310,8 @@
           <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0 16px"><input type="checkbox" id="pdfEnhanced" style="width:auto;margin-top:3px"><span>Enable enhanced PDF parsing (pdf.js via CDN)</span></label>
           <div class="divider"></div>
           <h3 class="small" style="margin-bottom:4px">Data management</h3>
-          <p class="hint">Clear all scholars, loaded opportunities, and generated analysis across all tabs. Your API keys and application settings are preserved.</p>
-          <div class="btn-row"><button class="btn danger small" id="resetAllDataBtn">Clear all data (keep settings)</button></div>
+          <p class="hint">Clear all scholars, loaded opportunities, and generated analysis across all tabs.</p>
+          <div class="btn-row"><button class="btn danger small" id="resetAllDataBtn">Clear all data</button></div>
           <div class="divider"></div>
           <h3 class="small" style="margin-bottom:4px">Appearance</h3>
           <div class="btn-row"><button class="btn secondary small" id="themeToggle2">Toggle light / dark</button></div>

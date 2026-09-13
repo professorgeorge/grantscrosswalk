@@ -154,8 +154,8 @@
   function resetAllData() {
     var hasData = state.profiles.length > 0 || (state.lastRfp && state.lastRfp.text) || ($('rfpText') && $('rfpText').value.trim().length > 0);
     var promptMsg = hasData
-      ? 'Clear all scholars, loaded opportunities, and analysis results from this device? Your API keys and settings will be preserved.'
-      : 'Reset all active workspace data? Your API keys and settings will be preserved.';
+      ? 'Clear all scholars, loaded opportunities, and analysis results from this device?'
+      : 'Reset all active workspace data?';
     if (!confirm(promptMsg)) return;
 
     // 1. Clear memory state
@@ -168,7 +168,7 @@
     state.lastTeamPitch = null;
     state.searchQuery = '';
 
-    // 2. Clear persistence (preserves 'meta' settings)
+    // 2. Clear persistence
     if (GCX.store && GCX.store.available) {
       if (GCX.store.clearAllData) {
         GCX.store.clearAllData();
@@ -202,7 +202,7 @@
         '</div>';
     }
 
-    toast('All data cleared (settings preserved)');
+    toast('All data cleared');
   }
 
   function applyWeightsPreset(presetName) {
@@ -1212,13 +1212,15 @@
     $('llmModel').placeholder = 'e.g. ' + (preset.modelPlaceholder || 'model name');
     $('llmKey').placeholder = preset.keyRequired === false ? 'Not required for Ollama' : 'Paste your API key';
     if (providerKey === 'ollama') {
+      if ($('ollamaHelp')) $('ollamaHelp').open = true;
       var isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
       if (isHttps) {
-        $('llmProviderHint').textContent = 'Note: Because this hosted site runs securely over HTTPS, browsers block unencrypted HTTP calls to localhost (Mixed Content). To use Ollama, run this app locally at http://localhost:8000 (via launch-pwa.bat or "node server.js"), or route Ollama through an HTTPS tunnel (e.g. ngrok / Cloudflare tunnel) and paste that https:// URL into Base URL below.';
+        $('llmProviderHint').textContent = 'Note: Because this hosted site runs securely over HTTPS, browsers block unencrypted HTTP calls to localhost (Mixed Content). See the connection options below:';
       } else {
         $('llmProviderHint').textContent = 'Local Ollama: No API key needed. Make sure "ollama serve" is running (default: http://localhost:11434/v1). Works out of the box when running locally.';
       }
     } else {
+      if ($('ollamaHelp')) $('ollamaHelp').open = false;
       $('llmProviderHint').textContent = PROVIDER_HINTS[providerKey] || '';
     }
   }
