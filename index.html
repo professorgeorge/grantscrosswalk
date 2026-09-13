@@ -156,10 +156,24 @@
             <span>RFP / solicitation / topic</span>
             <textarea id="rfpText" placeholder="Paste the funding opportunity text or describe the research topic..."></textarea>
           </label>
-          <div class="btn-row" style="margin-bottom:14px">
+          <div class="btn-row" style="margin-bottom:10px">
             <button class="btn secondary small" id="rfpUploadBtn">Upload RFP file</button>
             <button class="btn secondary small" id="loadSampleRfpBtn">Load Sample NSF RFP</button>
             <button class="btn ghost small" id="clearRfpBtn">Clear RFP</button>
+          </div>
+          <div class="pdf-enhanced-box" style="margin-bottom:14px;padding:10px 12px;background:var(--bg-surface-subtle);border:1px solid var(--border-subtle);border-radius:var(--radius-sm)">
+            <label class="small" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0">
+              <input type="checkbox" id="pdfEnhancedRfp" style="width:auto;margin-top:3px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                  <span style="font-weight:600;color:var(--text-primary)">Enhanced PDF parsing (pdf.js)</span>
+                  <span class="badge green" id="pdfJsBadgeRfp" style="display:none;font-size:11px">Active</span>
+                </div>
+                <p class="hint" style="margin:2px 0 0;font-size:12px;line-height:1.4">
+                  Recommended for long solicitations and multi-page RFP PDFs. Synchronized across all upload areas.
+                </p>
+              </div>
+            </label>
           </div>
           <div class="divider"></div>
           <label class="field">

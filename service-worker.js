@@ -3,7 +3,7 @@
  * Only same-origin app files are precached. The optional pdf.js CDN request is
  * always allowed to hit the network and is never cached here.
  */
-var CACHE = 'grantscrosswalk-v15';
+var CACHE = 'grantscrosswalk-v16';
 var SHELL = [
   './',
   './index.html',

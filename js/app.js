@@ -1258,10 +1258,13 @@
 
   // ---------- optional pdf.js ----------
   function syncPdfEnhancedUI(on) {
-    if ($('pdfEnhanced')) $('pdfEnhanced').checked = !!on;
-    if ($('pdfEnhancedRoster')) $('pdfEnhancedRoster').checked = !!on;
-    var badge = $('pdfJsBadge');
-    if (badge) {
+    ['pdfEnhanced', 'pdfEnhancedRoster', 'pdfEnhancedRfp'].forEach(function (id) {
+      var el = $(id);
+      if (el) el.checked = !!on;
+    });
+    ['pdfJsBadge', 'pdfJsBadgeRfp'].forEach(function (id) {
+      var badge = $(id);
+      if (!badge) return;
       if (GCX.pdfjs && GCX.pdfjs.ready) {
         badge.style.display = 'inline-block';
         badge.textContent = 'Active';
@@ -1273,7 +1276,7 @@
       } else {
         badge.style.display = 'none';
       }
-    }
+    });
   }
 
   function handlePdfEnhancedChange(on) {
@@ -1399,8 +1402,28 @@
     });
     $('analyzeBtn').onclick = analyze;
     $('rfpUploadBtn').onclick = function () {
-      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,.docx,.txt,.md,.rtf,.html,.htm';
-      inp.onchange = function () { if (inp.files[0]) GCX.parse.parseFile(inp.files[0]).then(function (r) { $('rfpText').value = r.text; if (r.warning) toast(r.warning, true); else toast('Loaded ' + inp.files[0].name); }); };
+      var inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.pdf,.docx,.doc,.txt,.md,.rtf,.html,.htm';
+      inp.onchange = function () {
+        if (inp.files[0]) {
+          var file = inp.files[0];
+          GCX.parse.parseFile(file).then(function (r) {
+            if (!r.text || r.text.length < 20) {
+              var advice = '';
+              if (/\.pdf$/i.test(file.name) && !(GCX.pdfjs && GCX.pdfjs.ready)) {
+                advice = ' Tip: Check "Enhanced PDF parsing" below to extract long multi-page solicitations.';
+              }
+              toast('Little text recovered from ' + file.name + '.' + advice, true);
+              if (r.text) $('rfpText').value = r.text;
+            } else {
+              $('rfpText').value = r.text;
+              if (r.warning) toast(r.warning, true);
+              else toast('Loaded ' + file.name + ' (' + r.text.length.toLocaleString() + ' chars)');
+            }
+          }).catch(function (e) {
+            toast('Failed to parse ' + file.name + ': ' + e.message, true);
+          });
+        }
+      };
       inp.click();
     };
     if ($('clearRfpBtn')) $('clearRfpBtn').onclick = function () { clearRfp(); };
@@ -1446,12 +1469,12 @@
     };
     $('llmSaveBtn').onclick = saveLlm;
     $('llmTestBtn').onclick = testLlm;
-    if ($('pdfEnhanced')) {
-      $('pdfEnhanced').onchange = function () { handlePdfEnhancedChange(this.checked); };
-    }
-    if ($('pdfEnhancedRoster')) {
-      $('pdfEnhancedRoster').onchange = function () { handlePdfEnhancedChange(this.checked); };
-    }
+    ['pdfEnhanced', 'pdfEnhancedRoster', 'pdfEnhancedRfp'].forEach(function (id) {
+      var el = $(id);
+      if (el) {
+        el.onchange = function () { handlePdfEnhancedChange(this.checked); };
+      }
+    });
 
     // modal
     $('modalClose').onclick = closeModal;

@@ -136,14 +136,47 @@
   }
 
   function docXmlToText(xml) {
-    // Preserve paragraph, line-break, tab and table-row structure as whitespace.
+    // Preserve paragraph, line-break, tab, table-cell and table-row structure as whitespace.
     var s = xml
-      .replace(/<w:tab\b[^>]*\/?>/g, ' ')
+      .replace(/<w:tab\b[^>]*\/?>/g, '\t')
       .replace(/<w:br\b[^>]*\/?>/g, '\n')
-      .replace(/<\/w:p>/g, '\n')
+      .replace(/<\/w:tc>/g, ' ')
       .replace(/<\/w:tr>/g, '\n')
+      .replace(/<\/w:p>/g, '\n')
       .replace(/<[^>]+>/g, '');
     return cleanText(decodeEntities(s));
+  }
+
+  function fromLegacyDoc(bytes) {
+    // Best-effort plaintext recovery from binary .doc files (scans UTF-16LE and ASCII text streams)
+    var text = '';
+    var utf16Buf = '';
+    for (var i = 0; i < bytes.length - 1; i += 2) {
+      var code = bytes[i] | (bytes[i + 1] << 8);
+      if ((code >= 32 && code <= 126) || code === 10 || code === 13 || code === 9) {
+        utf16Buf += String.fromCharCode(code);
+      } else if (code >= 160 && code <= 0x024f) {
+        utf16Buf += String.fromCharCode(code);
+      } else {
+        if (utf16Buf.length >= 8) text += utf16Buf + '\n';
+        utf16Buf = '';
+      }
+    }
+    if (utf16Buf.length >= 8) text += utf16Buf + '\n';
+    if (text.length < 80) {
+      var asciiBuf = '';
+      for (var j = 0; j < bytes.length; j++) {
+        var b = bytes[j];
+        if ((b >= 32 && b <= 126) || b === 10 || b === 13 || b === 9) {
+          asciiBuf += String.fromCharCode(b);
+        } else {
+          if (asciiBuf.length >= 8) text += asciiBuf + '\n';
+          asciiBuf = '';
+        }
+      }
+      if (asciiBuf.length >= 8) text += asciiBuf + '\n';
+    }
+    return cleanText(text);
   }
 
   async function fromDocx(bytes) {
@@ -348,7 +381,14 @@
         return { text: t, method: 'pdf', warning: t.length < 40 ? 'Little or no text recovered from this PDF. Enable "Enhanced PDF parsing (pdf.js)" in the upload box above, or paste the text.' : '' };
       }
       if (ext === 'docx') return { text: await fromDocx(bytes), method: 'docx', warning: '' };
-      if (ext === 'doc') return { text: '', method: 'doc', warning: 'Legacy .doc is not supported. Please save as .docx or paste the text.' };
+      if (ext === 'doc') {
+        var dt = fromLegacyDoc(bytes);
+        return {
+          text: dt,
+          method: 'doc',
+          warning: dt.length < 50 ? 'Legacy binary .doc file extracted with limited text. For best accuracy, please save as modern .docx or paste text.' : ''
+        };
+      }
       if (ext === 'rtf') return { text: fromRtf(bytes), method: 'rtf', warning: '' };
       if (ext === 'html' || ext === 'htm') return { text: fromHtml(bytes), method: 'html', warning: '' };
       // txt, md, csv, tsv, json, and unknown: treat as UTF-8 text.
