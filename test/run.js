@@ -225,7 +225,46 @@ async function main() {
   await GCX.llm.complete('hi');
   assert(captured.url === 'http://10.0.0.5:8080/v1/chat/completions', `a custom baseUrl override is honored over any preset default (got ${captured.url})`);
 
+  // Test Ollama mixed content error message detection
+  await GCX.llm.setConfig({ enabled: true, apiKey: '', provider: 'ollama', model: 'llama3.2', baseUrl: '' }).catch(() => {});
+  global.fetch = async () => { throw new TypeError('Failed to fetch'); };
+  global.window = { location: { protocol: 'https:', origin: 'https://professorgeorge.github.io' } };
+  let caughtError = null;
+  try {
+    await GCX.llm.complete('hi');
+  } catch (err) {
+    caughtError = err;
+  }
+  assert(caughtError && caughtError.message.includes('Browser Mixed Content Block'), 'detects browser mixed content block on HTTPS with actionable advice');
+  delete global.window;
+
   global.fetch = originalFetch;
+
+  // ---- 12. Security & Privacy Audit: Zero hardcoded API keys in codebase ----
+  hr('Security & Privacy Audit: Zero hardcoded API keys');
+  function walkFiles(dir) {
+    let files = [];
+    for (let f of fs.readdirSync(dir)) {
+      if (f === '.git' || f === 'node_modules') continue;
+      let p = path.join(dir, f);
+      if (fs.statSync(p).isDirectory()) files.push(...walkFiles(p));
+      else if (/\.(js|html|css|json|md|txt)$/i.test(f)) files.push(p);
+    }
+    return files;
+  }
+  const keyPatterns = [
+    /AIza[0-9A-Za-z_-]{35}/,
+    /sk-[0-9a-zA-Z]{20,}/,
+    /xai-[0-9a-zA-Z]{20,}/
+  ];
+  let leaked = [];
+  for (let file of walkFiles(path.join(__dirname, '..'))) {
+    let content = fs.readFileSync(file, 'utf8');
+    for (let pat of keyPatterns) {
+      if (pat.test(content)) leaked.push({ file: path.basename(file), pat: pat.toString() });
+    }
+  }
+  assert(leaked.length === 0, 'zero personal or hardcoded API keys found across codebase');
 
   hr('Store data cleanup (clearAllData preserves settings)');
   assert(typeof GCX.store.clearSearches === 'function', 'GCX.store.clearSearches function exists');

@@ -1197,11 +1197,11 @@
     if (GCX.store && GCX.store.clearCache) GCX.store.clearCache().then(function () { toast('Cached funding-search results cleared'); });
   }
   var PROVIDER_HINTS = {
-    anthropic: '',
-    openai: '',
-    gemini: 'Uses Gemini\u2019s OpenAI-compatible endpoint. Get a key from Google AI Studio.',
-    grok: 'Uses xAI\u2019s OpenAI-compatible endpoint. Get a key from the xAI console.',
-    ollama: 'No API key needed (Ollama ignores whatever you send). Make sure `ollama serve` is running. Ollama allows localhost by default, so this works if you are running this app locally; if you are using a hosted copy of this app instead, Ollama will block it unless you set OLLAMA_ORIGINS to that page address.',
+    anthropic: 'Requires an Anthropic API key. Client-side calls use direct browser access.',
+    openai: 'Requires an OpenAI API key. Stored only in your local browser IndexedDB.',
+    gemini: 'Uses Gemini OpenAI-compatible endpoint. Get a key from Google AI Studio.',
+    grok: 'Uses xAI OpenAI-compatible endpoint. Get a key from the xAI console.',
+    ollama: '',
     custom: 'Point this at any OpenAI-compatible /chat/completions endpoint (Azure OpenAI, OpenRouter, a self-hosted gateway, vLLM, LM Studio, etc.).'
   };
   function applyProviderUI(providerKey) {
@@ -1211,7 +1211,16 @@
     $('llmBaseUrl').placeholder = preset.defaultBaseUrl || 'https://...';
     $('llmModel').placeholder = 'e.g. ' + (preset.modelPlaceholder || 'model name');
     $('llmKey').placeholder = preset.keyRequired === false ? 'Not required for Ollama' : 'Paste your API key';
-    $('llmProviderHint').textContent = PROVIDER_HINTS[providerKey] || '';
+    if (providerKey === 'ollama') {
+      var isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
+      if (isHttps) {
+        $('llmProviderHint').textContent = 'Note: Because this hosted site runs securely over HTTPS, browsers block unencrypted HTTP calls to localhost (Mixed Content). To use Ollama, run this app locally at http://localhost:8000 (via launch-pwa.bat or "node server.js"), or route Ollama through an HTTPS tunnel (e.g. ngrok / Cloudflare tunnel) and paste that https:// URL into Base URL below.';
+      } else {
+        $('llmProviderHint').textContent = 'Local Ollama: No API key needed. Make sure "ollama serve" is running (default: http://localhost:11434/v1). Works out of the box when running locally.';
+      }
+    } else {
+      $('llmProviderHint').textContent = PROVIDER_HINTS[providerKey] || '';
+    }
   }
   function updateLlmBadge() {
     GCX.llm.getConfig().then(function () {

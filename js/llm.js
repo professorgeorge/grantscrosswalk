@@ -122,8 +122,16 @@
             messages: [{ role: 'system', content: opts.system || 'You are a careful research-development analyst.' }, { role: 'user', content: prompt }]
           })
         }).then(handle).then(function (j) { return j.choices[0].message.content; }).catch(function (e) {
-          if (cfg.provider === 'ollama' && e instanceof TypeError) {
-            throw new Error('Could not reach Ollama at ' + baseUrlFor(cfg) + '. Make sure `ollama serve` is running, and that OLLAMA_ORIGINS allows this page\u2019s origin (Ollama allows localhost by default, so this usually just works if the app itself is also running locally; a hosted copy of the app needs OLLAMA_ORIGINS set explicitly).');
+          if (e instanceof TypeError) {
+            var isHttps = typeof window !== 'undefined' && window.location && window.location.protocol === 'https:';
+            var url = baseUrlFor(cfg);
+            if (isHttps && /^http:\/\/(localhost|127\.0\.0\.1)/i.test(url)) {
+              var targetName = cfg.provider === 'ollama' ? 'Ollama' : 'your local model';
+              throw new Error('Browser Mixed Content Block: Because this app is loaded over HTTPS, your browser blocks unencrypted HTTP calls to ' + url + '. To use ' + targetName + ': 1) Run this app locally at http://localhost:8000 (via launch-pwa.bat or "node server.js"), which connects directly with zero configuration; or 2) Route through an HTTPS tunnel (e.g., ngrok or Cloudflare tunnel) and set that https:// URL in Base URL.');
+            }
+            if (cfg.provider === 'ollama') {
+              throw new Error('Could not reach Ollama at ' + url + '. Make sure `ollama serve` is running, and that OLLAMA_ORIGINS allows connections from ' + (typeof window !== 'undefined' && window.location ? window.location.origin : 'this page') + '.');
+            }
           }
           throw e;
         });
@@ -150,7 +158,14 @@
     if (!res.ok) {
       return res.text().then(function (t) {
         var msg = 'API error ' + res.status;
-        try { var j = JSON.parse(t); if (j.error) msg += ': ' + (j.error.message || j.error.type || ''); } catch (e) { if (t) msg += ': ' + t.slice(0, 200); }
+        try {
+          var j = JSON.parse(t);
+          if (Array.isArray(j) && j[0] && j[0].error) j = j[0];
+          if (j.error) {
+            msg += ': ' + (typeof j.error === 'string' ? j.error : (j.error.message || j.error.type || ''));
+          }
+        } catch (e) { if (t) msg += ': ' + t.slice(0, 200); }
+        if (res.status === 401) msg += ' (Please check that your API key is active and correctly pasted in Settings).';
         if (res.status === 0 || res.status === 403) msg += ' (a browser CORS restriction may be blocking this provider; some endpoints require a proxy).';
         throw new Error(msg);
       });
