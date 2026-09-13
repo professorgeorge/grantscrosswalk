@@ -1,5 +1,5 @@
 /*
- * llm.js — OPTIONAL enhancement layer. It ships disabled. The application is
+ * llm.js: OPTIONAL enhancement layer. It ships disabled. The application is
  * fully functional without it; nothing here runs unless the user configures
  * a provider and turns the layer on in Settings.
  *
@@ -21,8 +21,8 @@
  *
  * Providers supported, and why there are only two code paths for six of them:
  * Anthropic's Messages API has its own request/response shape, so it gets a
- * dedicated branch. Every other provider listed here — OpenAI, Google Gemini,
- * xAI's Grok, a locally-running Ollama, or anything else — now exposes (or
+ * dedicated branch. Every other provider listed here (OpenAI, Google Gemini,
+ * xAI's Grok, a locally-running Ollama, or anything else) now exposes (or
  * has always exposed) an OpenAI-compatible /chat/completions endpoint, so
  * they all share one code path and differ only in their base URL and whether
  * a real API key is required (Ollama's isn't; it ignores whatever string you
@@ -250,6 +250,142 @@
       });
   }
 
+  // Executive Team Justification Narrative for an assembled proposal team.
+  function draftTeamPitch(team, rfpText) {
+    if (!isEnabled()) return Promise.reject(new Error('LLM layer is disabled.'));
+    var members = (team && team.members) ? team.members : (team || []);
+    var memberList = members.map(function (m, i) {
+      var p = m.profile || m;
+      var contribs = (m.contributes || []).map(function (c) { return c.term; }).slice(0, 5).join(', ');
+      return (i + 1) + '. ' + (p.name || 'Scholar') + ' (' + (p.affiliation || 'Faculty') + ')' +
+        (contribs ? ' (key capabilities: ' + contribs + ')' : '');
+    }).join('\n');
+    var metrics = 'Requirement coverage: ' + Math.round((team.coverage || 0.75) * 100) + '%, ' +
+      'Complementarity: ' + (team.complementarity ? team.complementarity.toFixed(2) : '0.95') + ', ' +
+      'Disciplines represented: ' + (team.interdisciplinarity || members.length);
+
+    var prompt = 'You are a research development officer preparing a clear Team Composition & Complementarity Justification for an interdisciplinary grant proposal.\n\n' +
+      'Solicitation / Opportunity Context:\n' + (rfpText ? rfpText.slice(0, 3500) : 'Interdisciplinary research solicitation') + '\n\n' +
+      'Assembled Complementary Team:\n' + memberList + '\n\n' +
+      'Team Coverage Metrics: ' + metrics + '\n\n' +
+      'Write a concise, professional 2-to-3 paragraph narrative justifying this team. ' +
+      'Articulate: (1) how this team configuration addresses the solicitation requirements, ' +
+      '(2) how their complementary disciplinary strengths interface without unnecessary overlap, and ' +
+      '(3) the team\'s principal strengths for the proposal. Return JSON with keys "headline" (a concise title) and "narrative" (the 2-3 paragraph justification narrative).';
+
+    return complete(prompt, { system: 'You are an academic research development officer and proposal writer.', maxTokens: 1400, temperature: 0.5 })
+      .then(function (txt) {
+        var j = extractJson(txt);
+        if (j && (j.narrative || j.headline)) return j;
+        return { headline: 'Interdisciplinary Team Alignment', narrative: txt };
+      });
+  }
+
+  // Explain the specific research synergy between two complementary scholars.
+  function explainPairSynergy(scholarA, scholarB) {
+    if (!isEnabled()) return Promise.reject(new Error('LLM layer is disabled.'));
+    var capsA = GCX.extract ? GCX.extract.groupCapabilities(scholarA) : {};
+    var capsB = GCX.extract ? GCX.extract.groupCapabilities(scholarB) : {};
+    var summaryA = (capsA.discipline || []).map(function(c){return c.term;}).slice(0,2).concat((capsA.method||[]).map(function(c){return c.term;}).slice(0,3)).join(', ');
+    var summaryB = (capsB.discipline || []).map(function(c){return c.term;}).slice(0,2).concat((capsB.method||[]).map(function(c){return c.term;}).slice(0,3)).join(', ');
+
+    var prompt = 'Analyze the interdisciplinary collaboration potential between these two university researchers:\n\n' +
+      'Scholar 1: ' + (scholarA.name || 'Scholar A') + ' (' + (scholarA.affiliation || '') + ')\n' +
+      'Expertise: ' + (summaryA || 'Academic research') + '\n\n' +
+      'Scholar 2: ' + (scholarB.name || 'Scholar B') + ' (' + (scholarB.affiliation || '') + ')\n' +
+      'Expertise: ' + (summaryB || 'Academic research') + '\n\n' +
+      'In exactly 2 concise sentences, summarize what joint scientific inquiries or capabilities they could pursue together. Return JSON with key "synergy".';
+
+    return complete(prompt, { system: 'You identify concrete cross-disciplinary research synergies.', maxTokens: 450, temperature: 0.4 })
+      .then(function (txt) {
+        var j = extractJson(txt);
+        return (j && j.synergy) ? j.synergy : txt.trim();
+      });
+  }
+
+  // Draft a structured Concept Note for a scholar and opportunity.
+  function draftConceptNote(profile, opportunity) {
+    if (!isEnabled()) return Promise.reject(new Error('LLM layer is disabled.'));
+    var caps = GCX.extract ? GCX.extract.groupCapabilities(profile) : {};
+    var capSummary = (caps.discipline || []).map(function(c){return c.term;}).slice(0,3).concat((caps.method||[]).map(function(c){return c.term;}).slice(0,5)).join(', ');
+
+    var prompt = 'Draft a structured Concept Note aligning this researcher with this funding opportunity:\n\n' +
+      'Scholar: ' + (profile.name || 'Faculty Member') + ' (' + (profile.affiliation || '') + ')\n' +
+      'Core Capabilities: ' + capSummary + '\n\n' +
+      'Target Opportunity: "' + (opportunity.title || '') + '" (' + (opportunity.agency || 'Federal Agency') + ')\n' +
+      'Solicitation Summary: ' + (opportunity.text || '').slice(0, 3000) + '\n\n' +
+      'Return JSON with the following keys:\n' +
+      '- "title": A clear proposal working title\n' +
+      '- "abstract": A 3-sentence summary of the proposed research project\n' +
+      '- "aims": An array of 3 specific aims (each an object with "aim" e.g. "Aim 1: ..." and "description")\n' +
+      '- "impact": Two sentences on broader impacts and agency priority alignment';
+
+    return complete(prompt, { system: 'You are an academic grant development advisor.', maxTokens: 1500, temperature: 0.5 })
+      .then(function (txt) {
+        var j = extractJson(txt);
+        if (j && j.title && j.abstract) return j;
+        return { title: opportunity.title, abstract: txt, aims: [], impact: '' };
+      });
+  }
+
+  // Generate a concise 2-sentence executive faculty research profile.
+  function generateBio(profile) {
+    if (!isEnabled()) return Promise.reject(new Error('LLM layer is disabled.'));
+    var caps = GCX.extract ? GCX.extract.groupCapabilities(profile) : {};
+    var capList = (caps.discipline || []).concat(caps.method || []).concat(caps.theme || []).map(function(c){return c.term;}).slice(0, 10).join(', ');
+
+    var prompt = 'Write a concise, professional 2-sentence research biography for this scholar based on their capabilities:\n' +
+      'Name: ' + profile.name + '\n' +
+      'Department / Affiliation: ' + (profile.affiliation || '') + '\n' +
+      'Core Capabilities: ' + capList + '\n\n' +
+      'Return JSON with key "bio".';
+
+    return complete(prompt, { system: 'You write concise, professional faculty profiles.', maxTokens: 300, temperature: 0.3 })
+      .then(function (txt) {
+        var j = extractJson(txt);
+        return (j && j.bio) ? j.bio : txt.trim();
+      });
+  }
+
+  // Draft an agency strategy recommendation identifying best-fit directorates, institutes, and mechanisms.
+  function draftAgencyStrategy(profile, queries) {
+    if (!isEnabled()) return Promise.reject(new Error('LLM layer is disabled.'));
+    var caps = GCX.extract ? GCX.extract.groupCapabilities(profile) : {};
+    var capList = (caps.discipline || []).concat(caps.method || []).concat(caps.theme || []).map(function(c){return c.term;}).slice(0, 10).join(', ');
+    var primary = (queries && queries.primaryKeyword) || (profile.capabilities && profile.capabilities[0] && profile.capabilities[0].term) || 'research';
+
+    var prompt = 'Act as a senior university Director of Research Development. Provide a tailored federal funding strategy for this researcher:\n' +
+      'Researcher: ' + profile.name + '\n' +
+      'Affiliation: ' + (profile.affiliation || 'University faculty') + '\n' +
+      'Core Capabilities: ' + capList + '\n' +
+      'Primary Focus: ' + primary + '\n\n' +
+      'Recommend the most aligned funding agencies, specific divisions/directorates (e.g. NSF CISE/IIS, NIH NLM, DOE ASCR, DARPA), and specific grant mechanisms (e.g. CAREER, R01/R21, EAGER, BAA).\n\n' +
+      'Format response as JSON with this structure:\n' +
+      '{\n' +
+      '  "executiveSummary": "2-3 sentences framing this scholar\'s unique federal funding value proposition.",\n' +
+      '  "recommendedAgencies": [\n' +
+      '    {\n' +
+      '      "agency": "e.g. National Science Foundation (NSF)",\n' +
+      '      "directorateOrDivision": "e.g. CISE (Information and Intelligent Systems) / ENG",\n' +
+      '      "mechanisms": "e.g. NSF CAREER, Core Programs, Smart & Connected Communities",\n' +
+      '      "pitchAngle": "How to frame proposals to resonate with this agency\'s current priorities."\n' +
+      '    }\n' +
+      '  ],\n' +
+      '  "strategicAdvice": "Key positioning advice for interdisciplinary review panels."\n' +
+      '}';
+
+    return complete(prompt, { system: 'You are a director of research development advising university faculty on federal funding strategy.', maxTokens: 1200, temperature: 0.4 })
+      .then(function (txt) {
+        var j = extractJson(txt);
+        if (j && j.executiveSummary && Array.isArray(j.recommendedAgencies)) return j;
+        return {
+          executiveSummary: txt,
+          recommendedAgencies: [],
+          strategicAdvice: ''
+        };
+      });
+  }
+
   function testConnection() {
     return complete('Reply with the single word: ok', { maxTokens: 16, temperature: 0 })
       .then(function (t) { return { ok: true, text: (t || '').trim() }; });
@@ -266,6 +402,11 @@
     richTopics: richTopics,
     explainGaps: explainGaps,
     explainMatches: explainMatches,
+    draftTeamPitch: draftTeamPitch,
+    explainPairSynergy: explainPairSynergy,
+    draftConceptNote: draftConceptNote,
+    draftAgencyStrategy: draftAgencyStrategy,
+    generateBio: generateBio,
     testConnection: testConnection,
     _extractJson: extractJson
   };

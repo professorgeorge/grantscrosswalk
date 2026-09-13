@@ -2,7 +2,7 @@
 
 A self-contained, privacy-first web application that reads scholars' CVs, finds
 genuine complementarities among them, and matches them to a research topic or a
-funding opportunity — in both directions. It runs entirely in the browser. No
+funding opportunity in both directions. It runs entirely in the browser. No
 server, no account, no data leaves the device unless you deliberately turn on
 the optional AI layer.
 
@@ -118,16 +118,15 @@ path, only capability-level data (tags, gap terms, public opportunity text)
 is sent, never the CV itself.
 
 **Providers.** Anthropic (Claude) has its own request format; every other
-option — OpenAI, Google Gemini, xAI's Grok, a locally-running Ollama, or any
-other OpenAI-compatible endpoint (Azure OpenAI, OpenRouter, vLLM, LM Studio,
-etc.) — is called through the same OpenAI-style `/chat/completions` request,
+option (OpenAI, Google Gemini, xAI's Grok, a local Ollama instance, or any
+other OpenAI-compatible endpoint such as Azure OpenAI, OpenRouter, vLLM, LM Studio,
+etc.) is called through the same OpenAI-style `/chat/completions` request,
 since all of them now support it. Ollama needs no API key (it ignores
 whatever string is sent) and runs entirely on your machine, but note that
 Ollama's default CORS policy only allows `localhost` origins: if you're
 running this app locally too, it should just work; if you're using a copy of
 this app hosted elsewhere, Ollama will block it unless you set
 `OLLAMA_ORIGINS` to include that page's address.
-is sent, never the CV itself.
 
 ## Data and privacy
 
@@ -142,7 +141,7 @@ second, explicit consent checkbox.
 
 Turning on live funding search (Settings &rarr; Live funding search) changes
 the privacy story in one specific, bounded way: it sends a scholar's top few
-research terms &mdash; never their CV text &mdash; to Grants.gov's public
+research terms (never their CV text) to Grants.gov's public
 `search2` API, and, for the strongest matches, a follow-up request for that
 opportunity's full synopsis text so the ranking has something more than a
 title to work with. Nothing else in the app makes a network call by default.
@@ -243,7 +242,7 @@ reasoning visible precisely so that judgment can be applied to it.
 
 ## Acknowledgment
 
-Conceptualization and development: Professor Babu George.
+Conceptualization and development: [Professor Babu George](https://www.linkedin.com/in/beingbabu/).
 
 ## License
 

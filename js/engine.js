@@ -1,5 +1,5 @@
 /*
- * engine.js — the analytical core. No network, no dependencies.
+ * engine.js: the analytical core. No network, no dependencies.
  *
  * Design choices worth stating plainly:
  *

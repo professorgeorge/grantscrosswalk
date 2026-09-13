@@ -1,13 +1,14 @@
 /*
- * service-worker.js — offline app shell caching.
+ * service-worker.js: offline app shell caching.
  * Only same-origin app files are precached. The optional pdf.js CDN request is
  * always allowed to hit the network and is never cached here.
  */
-var CACHE = 'grant-crosswalk-v2'; // bumped alongside the app's rename and the addition of opportunities.js below
+var CACHE = 'grant-crosswalk-v10';
 var SHELL = [
   './',
   './index.html',
   './css/styles.css',
+  './js/samples-data.js',
   './js/lexicon.js',
   './js/parse.js',
   './js/extract.js',
@@ -19,7 +20,8 @@ var SHELL = [
   './manifest.webmanifest',
   './icons/icon.svg',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/icon-maskable-512.png'
 ];
 
 self.addEventListener('install', function (e) {
@@ -35,13 +37,19 @@ self.addEventListener('activate', function (e) {
 self.addEventListener('fetch', function (e) {
   var url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== self.location.origin) return; // let CDN/API go to network
+  // Network-First with Cache Fallback: ensures online users always see code updates immediately,
+  // while preserving full offline functionality.
   e.respondWith(
-    caches.match(e.request).then(function (hit) {
-      return hit || fetch(e.request).then(function (res) {
+    fetch(e.request).then(function (res) {
+      if (res && res.status === 200) {
         var copy = res.clone();
         caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
-        return res;
-      }).catch(function () { return caches.match('./index.html'); });
+      }
+      return res;
+    }).catch(function () {
+      return caches.match(e.request).then(function (hit) {
+        return hit || caches.match('./index.html');
+      });
     })
   );
 });

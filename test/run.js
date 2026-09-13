@@ -136,6 +136,24 @@ async function main() {
   assert(rankedForBen[0].opportunity.id === 'W1', 'the water-infrastructure opportunity ranks first for a water/geospatial scholar');
   assert(rankedForAda[0].matched.length > 0, 'a top match is explainable via shared terms, same as RFP Talent Search');
 
+  // Recommended Boolean Queries and Agency Portals verification (fail-safe strategy)
+  const booleanQueries = GCX.opportunities.buildBooleanQueries(ada);
+  assert(booleanQueries && booleanQueries.precision && booleanQueries.broad, 'generated structured boolean query recommendations');
+  assert(booleanQueries.precision.query.includes('AND'), 'precision boolean query includes AND logic');
+  assert(booleanQueries.broad.query.includes('OR'), 'broad boolean query includes OR logic');
+  console.log(`  Ada Precision Query: ${booleanQueries.precision.query}`);
+  console.log(`  Ada Broad Query:     ${booleanQueries.broad.query}`);
+
+  const portals = GCX.opportunities.getAgencyPortals(ada, booleanQueries);
+  assert(portals.length >= 5, `generated ${portals.length} official agency search portals`);
+  assert(portals.some(p => p.id === 'grants-gov' && p.directUrl.includes('grants.gov')), 'includes direct Grants.gov search portal');
+  assert(portals.some(p => p.id === 'nsf' && p.directUrl.includes('nsf.gov/funding/opportunities')), 'includes official NSF opportunities URL');
+
+  const nsfPortal = portals.find(p => p.id === 'nsf');
+  assert(nsfPortal && decodeURIComponent(nsfPortal.deepSearchUrl).includes('natural language processing'), 'NSF Google URL contains primary keyword');
+  assert(decodeURIComponent(nsfPortal.deepSearchUrl).includes('computer science') || decodeURIComponent(nsfPortal.deepSearchUrl).includes('OR'), 'NSF Google URL contains full boolean query with secondary terms and operators');
+  assert(nsfPortal.broadSearchUrl && decodeURIComponent(nsfPortal.broadSearchUrl).includes('OR'), 'NSF portal includes broad Google search URL');
+
   // Local-relay URL routing (pure logic; no network, no IndexedDB involved).
   const directUrls = GCX.opportunities._urlsFor({ proxyBaseUrl: '' });
   assert(directUrls.search === 'https://api.grants.gov/v1/api/search2', 'defaults to calling Grants.gov directly when no relay is set');
@@ -163,6 +181,11 @@ async function main() {
   mockReply([{ title: aiOpp.title, detail: 'Strong fit given the NLP background; frame the proposal around service-delivery chatbots.' }]);
   const matchExplain = await GCX.llm.explainMatches(ada, rankedForAda, kws);
   assert(matchExplain.length === 1 && matchExplain[0].title === aiOpp.title, 'explainMatches returns guidance keyed to the right opportunity title');
+
+  mockReply({ executiveSummary: 'Strong fit for NSF CISE and NIH biomedical NLP.', recommendedAgencies: [{ agency: 'NSF', directorateOrDivision: 'CISE/IIS', mechanisms: 'NSF CAREER' }] });
+  const agencyStrategy = await GCX.llm.draftAgencyStrategy(ada, booleanQueries);
+  assert(agencyStrategy && agencyStrategy.recommendedAgencies.length === 1, 'draftAgencyStrategy returns structured agency recommendations');
+  assert(agencyStrategy.recommendedAgencies[0].agency === 'NSF', 'draftAgencyStrategy identifies target agency');
 
   global.fetch = originalFetch;
 
@@ -203,6 +226,12 @@ async function main() {
   assert(captured.url === 'http://10.0.0.5:8080/v1/chat/completions', `a custom baseUrl override is honored over any preset default (got ${captured.url})`);
 
   global.fetch = originalFetch;
+
+  hr('Store data cleanup (clearAllData preserves settings)');
+  assert(typeof GCX.store.clearSearches === 'function', 'GCX.store.clearSearches function exists');
+  assert(typeof GCX.store.clearAllData === 'function', 'GCX.store.clearAllData function exists');
+  await GCX.store.clearAllData();
+  assert(true, 'GCX.store.clearAllData resolves cleanly');
 
   hr(failures === 0 ? 'ALL CHECKS PASSED' : (failures + ' CHECK(S) FAILED'));
   process.exit(failures === 0 ? 0 : 1);

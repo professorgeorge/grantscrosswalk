@@ -1,5 +1,5 @@
 /*
- * parse.js — turn an uploaded file into plain text, with no third-party
+ * parse.js: turn an uploaded file into plain text, with no third-party
  * libraries. Everything here runs on-device.
  *
  * Supported: .txt .md .csv .tsv .rtf .html .htm (trivial), .docx (via a

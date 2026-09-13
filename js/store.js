@@ -1,5 +1,5 @@
 /*
- * store.js — local persistence via IndexedDB.
+ * store.js: local persistence via IndexedDB.
  *
  * The roster (a dean's or VP's growing library of faculty CVs) is the asset
  * that makes this tool pay off: build it once, and every future RFP becomes a
@@ -86,6 +86,17 @@
     getSearches: function () { return getAll('searches'); },
     putSearch: function (rec) { return tx('searches', 'readwrite', function (s) { s.put(rec); }); },
     deleteSearch: function (id) { return tx('searches', 'readwrite', function (s) { s.delete(id); }); },
+    clearSearches: function () { return tx('searches', 'readwrite', function (s) { s.clear(); }); },
+
+    // Clears all user roster data, search history, and funding cache, while leaving settings in 'meta' untouched.
+    clearAllData: function () {
+      if (!store.available) return Promise.resolve();
+      return Promise.all([
+        store.clearProfiles(),
+        store.clearSearches(),
+        store.clearCache()
+      ]);
+    },
 
     // Cache for the optional live-funding-search results (js/opportunities.js).
     // Kept in its own object store, separate from the roster, so clearing it

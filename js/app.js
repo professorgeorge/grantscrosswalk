@@ -1,5 +1,5 @@
 /*
- * app.js — UI controller. Vanilla JS, classic script, no build step.
+ * app.js: UI controller. Vanilla JS, classic script, no build step.
  * Depends on the GCX.* modules loaded before it.
  */
 (function (GCX) {
@@ -10,7 +10,7 @@
   var pct = function (x) { return Math.round(x * 100); };
   var title = function (s) { return GCX.engine.titleCase(s); };
 
-  var state = { profiles: [], lastRfp: null, lastCorpus: null, lastResults: null, lastTeam: null, lastTopics: null };
+  var state = { profiles: [], lastRfp: null, lastCorpus: null, lastResults: null, lastTeam: null, lastTopics: null, searchQuery: '' };
 
   // ---------- toast ----------
   function toast(msg, isErr) {
@@ -40,7 +40,10 @@
     });
     Array.prototype.forEach.call($('nav').children, function (b) { b.classList.toggle('active', b.dataset.view === name); });
     if (name === 'team') renderTeamExplorer();
-    if (name === 'funding') renderFundingScholarPicker();
+    if (name === 'funding') {
+      renderFundingScholarPicker();
+      if (state.profiles.length && $('fundingScholarSelect') && $('fundingScholarSelect').value) searchFunding();
+    }
   }
 
   // ---------- avatar ----------
@@ -54,15 +57,34 @@
     $('rosterSub').textContent = state.profiles.length ? state.profiles.length + ' in library' : '';
     var hint = $('rfpRosterHint');
     if (hint) hint.textContent = state.profiles.length ? '' : 'Your roster is empty. Add CVs under the Roster tab first.';
+    var demoBar = $('demoCohortBar');
+    if (demoBar) demoBar.style.display = state.profiles.length ? 'none' : 'flex';
   }
 
   function renderRoster() {
     var box = $('rosterList'); box.innerHTML = '';
     if (!state.profiles.length) {
-      box.appendChild(el('div', 'empty', '<div class="big">\ud83d\udcda</div><p>No scholars yet. Drop CV files or paste one as text to get started.</p>'));
+      box.appendChild(el('div', 'empty', '<div class="big">\ud83d\udcda</div><p>No scholars yet. Drop CV files, paste one as text, or load the demo cohort above to get started.</p>'));
       return;
     }
-    state.profiles.slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); }).forEach(function (p) {
+
+    var list = state.profiles.slice().sort(function (a, b) { return (a.name || '').localeCompare(b.name || ''); });
+    if (state.searchQuery) {
+      var q = state.searchQuery.toLowerCase();
+      list = list.filter(function (p) {
+        if ((p.name || '').toLowerCase().indexOf(q) !== -1) return true;
+        if ((p.affiliation || '').toLowerCase().indexOf(q) !== -1) return true;
+        var caps = (p.capabilities || []).map(function (c) { return c.term; }).join(' ').toLowerCase();
+        return caps.indexOf(q) !== -1;
+      });
+    }
+
+    if (!list.length) {
+      box.appendChild(el('div', 'empty', '<div class="big">\ud83d\udd0d</div><p>No scholars match "' + esc(state.searchQuery) + '". Try a different search term.</p>'));
+      return;
+    }
+
+    list.forEach(function (p) {
       var row = el('div', 'scholar-row');
       var av = el('div', 'avatar'); av.style.background = avatarColor(p.name || '?'); av.textContent = initials(p.name || '?');
       var main = el('div', 'scholar-main');
@@ -70,7 +92,7 @@
       var caps = (g.discipline.slice(0, 2).concat(g.method.slice(0, 3))).map(function (c) { return title(c.term); }).join(' · ');
       main.innerHTML = '<div class="name">' + esc(p.name) + (p.edited ? ' <span class="badge green" style="font-size:9px">curated</span>' : '') + '</div>' +
         '<div class="aff">' + esc(p.affiliation || p.sourceFile || '') + '</div>' +
-        '<div class="hint" style="margin-top:2px">' + esc(caps || 'No capabilities detected — click to add tags') + '</div>';
+        '<div class="hint" style="margin-top:2px">' + esc(caps || 'No capabilities detected: click to add tags') + '</div>';
       var acts = el('div', 'acts');
       var editBtn = el('button', 'btn ghost small', 'Edit'); editBtn.onclick = function () { openScholar(p); };
       var delBtn = el('button', 'btn ghost small', '✕'); delBtn.title = 'Remove'; delBtn.onclick = function () { removeProfile(p); };
@@ -80,6 +102,125 @@
       main.onclick = function () { openScholar(p); };
       box.appendChild(row);
     });
+  }
+
+  function loadDemoCohort() {
+    if (!GCX.samples || !GCX.samples.scholars || !GCX.samples.scholars.length) {
+      toast('Demo data not available.', true);
+      return;
+    }
+    var existingIds = {};
+    state.profiles.forEach(function (p) { existingIds[p.id] = true; });
+    var added = 0;
+    GCX.samples.scholars.forEach(function (s) {
+      var prof = GCX.extract.buildProfile(s.text, { filename: s.filename });
+      if (!existingIds[prof.id]) {
+        state.profiles.push(prof);
+        persist(prof);
+        existingIds[prof.id] = true;
+        added++;
+      }
+    });
+    renderRoster();
+    updateCount();
+    toast('Loaded ' + added + ' demo scholars into your roster');
+  }
+
+  function loadSampleRfp() {
+    if (!GCX.samples || !GCX.samples.rfp) {
+      toast('Sample RFP data not available.', true);
+      return;
+    }
+    $('rfpText').value = GCX.samples.rfp;
+    toast('Loaded NSF Smart & Connected Communities RFP');
+  }
+
+  function clearRfp(silent) {
+    if ($('rfpText')) $('rfpText').value = '';
+    state.lastRfp = null;
+    state.lastResults = null;
+    state.lastTeam = null;
+    state.lastTopics = null;
+    state.lastTeamPitch = null;
+    if ($('rfpResults')) {
+      $('rfpResults').innerHTML = '<div class="empty card pad">' +
+        '<div class="big"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></div>' +
+        '<p><strong>Rank your scholars against an opportunity.</strong><br>Add CVs to your roster, paste an RFP, and get an explainable shortlist, a coverage-maximising team, capacity gaps, and collaboration topics.</p>' +
+        '</div>';
+    }
+    if (!silent) toast('Cleared opportunity text and results');
+  }
+
+  function resetAllData() {
+    var hasData = state.profiles.length > 0 || (state.lastRfp && state.lastRfp.text) || ($('rfpText') && $('rfpText').value.trim().length > 0);
+    var promptMsg = hasData
+      ? 'Clear all scholars, loaded opportunities, and analysis results from this device? Your API keys and settings will be preserved.'
+      : 'Reset all active workspace data? Your API keys and settings will be preserved.';
+    if (!confirm(promptMsg)) return;
+
+    // 1. Clear memory state
+    state.profiles = [];
+    state.lastRfp = null;
+    state.lastCorpus = null;
+    state.lastResults = null;
+    state.lastTeam = null;
+    state.lastTopics = null;
+    state.lastTeamPitch = null;
+    state.searchQuery = '';
+
+    // 2. Clear persistence (preserves 'meta' settings)
+    if (GCX.store && GCX.store.available) {
+      if (GCX.store.clearAllData) {
+        GCX.store.clearAllData();
+      } else {
+        GCX.store.clearProfiles();
+        if (GCX.store.clearCache) GCX.store.clearCache();
+      }
+    }
+
+    // 3. Clear Roster tab
+    if ($('pasteCv')) $('pasteCv').value = '';
+    if ($('rosterSearchInput')) $('rosterSearchInput').value = '';
+    renderRoster();
+    updateCount();
+
+    // 4. Clear RFP tab
+    clearRfp(true);
+    if ($('rfpRosterHint')) $('rfpRosterHint').textContent = 'Your roster is empty. Add CVs under the Roster tab first.';
+
+    // 5. Clear Team Explorer tab
+    renderTeamExplorer();
+
+    // 6. Clear Funding tab
+    if ($('fundingPasteCv')) $('fundingPasteCv').value = '';
+    if ($('fundingAgency')) $('fundingAgency').value = '';
+    renderFundingScholarPicker();
+    if ($('fundingResults')) {
+      $('fundingResults').innerHTML = '<div class="empty card pad">' +
+        '<div class="big"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></div>' +
+        '<p><strong>Funding Strategy Hub</strong><br>Select a scholar from your roster (or paste CV text) and click <strong>Generate Boolean Queries &amp; Portals</strong>.<br>The tool extracts key research terms, constructs recommended Boolean queries (Precision, Broad, Interdisciplinary, Solicitations), and provides direct links to Grants.gov, NSF, NIH, DOE, and DARPA.</p>' +
+        '</div>';
+    }
+
+    toast('All data cleared (settings preserved)');
+  }
+
+  function applyWeightsPreset(presetName) {
+    var w = { relevance: 70, recent: 20, funding: 10 };
+    if (presetName === 'scientific') w = { relevance: 90, recent: 5, funding: 5 };
+    else if (presetName === 'track') w = { relevance: 50, recent: 20, funding: 30 };
+
+    $('wRelevance').value = w.relevance; $('wRelevanceV').textContent = w.relevance;
+    $('wRecent').value = w.recent; $('wRecentV').textContent = w.recent;
+    $('wFunding').value = w.funding; $('wFundingV').textContent = w.funding;
+
+    ['presetBalanced', 'presetRelevance', 'presetFunding'].forEach(function (id) {
+      var btn = $(id);
+      if (btn) btn.classList.remove('active');
+    });
+    if (presetName === 'scientific' && $('presetRelevance')) $('presetRelevance').classList.add('active');
+    else if (presetName === 'track' && $('presetFunding')) $('presetFunding').classList.add('active');
+    else if ($('presetBalanced')) $('presetBalanced').classList.add('active');
   }
 
   function persist(p) { if (GCX.store && GCX.store.available) return GCX.store.putProfile(p); return Promise.resolve(); }
@@ -107,7 +248,7 @@
         state.profiles.push(prof);
         await persist(prof);
         added++;
-      } catch (e) { toast('Failed: ' + f.name + ' — ' + e.message, true); }
+      } catch (e) { toast('Failed: ' + f.name + ': ' + e.message, true); }
     }
     renderRoster(); updateCount();
     if (added) toast('Added ' + added + ' scholar' + (added === 1 ? '' : 's') + (warned ? ' (' + warned + ' with parse warnings)' : ''));
@@ -137,7 +278,7 @@
 
     var capWrap = el('div');
     function renderChips() {
-      capWrap.innerHTML = '<div class="hint" style="margin-bottom:6px">Detected capabilities — remove anything wrong, and add what is missing. Curated tags are weighted strongly.</div>';
+      capWrap.innerHTML = '<div class="hint" style="margin-bottom:6px">Detected capabilities: remove anything inaccurate, and add missing terms. Curated tags are weighted strongly.</div>';
       var cats = [['discipline', 'Disciplines'], ['method', 'Methods'], ['theme', 'Themes'], ['infrastructure', 'Infrastructure'], ['funder', 'Funders']];
       var gg = GCX.extract.groupCapabilities(p);
       cats.forEach(function (c) {
@@ -174,21 +315,34 @@
     body.appendChild(capWrap);
 
     if (p.aiSummary) {
-      body.insertBefore(el('p', 'hint', '<em>AI summary:</em> ' + esc(p.aiSummary)), capWrap);
+      body.insertBefore(el('p', 'hint', '<em>Faculty research bio:</em> ' + esc(p.aiSummary)), capWrap);
     }
 
     if (GCX.llm && GCX.llm.isEnabled()) {
-      var aiBtn = el('button', 'btn secondary small', 'Enhance tags with AI'); aiBtn.style.marginTop = '10px';
+      var aiBtnRow = el('div', 'btn-row'); aiBtnRow.style.marginTop = '10px';
+      var aiBtn = el('button', 'btn secondary small', 'Suggest tags with AI');
       aiBtn.onclick = function () {
         aiBtn.disabled = true; aiBtn.textContent = 'Working...';
         GCX.llm.enhanceProfile(p).then(function (r) {
           p.tagsAdded = Array.from(new Set((p.tagsAdded || []).concat(r.tags))); p.edited = true;
           if (r.summary) p.aiSummary = r.summary;
           openScholar(p); // re-render so the new summary and tags both show
-          toast('AI added ' + r.tags.length + ' tags'); aiBtn.disabled = false; aiBtn.textContent = 'Enhance tags with AI';
-        }).catch(function (e) { toast(e.message, true); aiBtn.disabled = false; aiBtn.textContent = 'Enhance tags with AI'; });
+          toast('AI added ' + r.tags.length + ' tags'); aiBtn.disabled = false; aiBtn.textContent = 'Suggest tags with AI';
+        }).catch(function (e) { toast(e.message, true); aiBtn.disabled = false; aiBtn.textContent = 'Suggest tags with AI'; });
       };
-      body.appendChild(aiBtn);
+      var bioBtn = el('button', 'btn secondary small', 'Draft 2-sentence bio');
+      bioBtn.onclick = function () {
+        bioBtn.disabled = true; bioBtn.textContent = 'Writing bio...';
+        GCX.llm.generateBio(p).then(function (bio) {
+          p.aiSummary = bio; p.edited = true;
+          persist(p);
+          openScholar(p);
+          toast('Generated research bio for ' + p.name);
+        }).catch(function (e) { toast(e.message, true); bioBtn.disabled = false; bioBtn.textContent = 'Draft 2-sentence bio'; });
+      };
+      aiBtnRow.appendChild(aiBtn);
+      aiBtnRow.appendChild(bioBtn);
+      body.appendChild(aiBtnRow);
     }
 
     var raw = el('details', 'raw', '<summary>View extracted text</summary>');
@@ -257,6 +411,48 @@
     });
     if (team.gaps && team.gaps.length) {
       teamCard.appendChild(el('div', 'hint', 'This team still leaves uncovered: ' + team.gaps.slice(0, 6).map(function (g) { return title(g.term); }).join(', ') + '.'));
+    }
+    if (GCX.llm && GCX.llm.isEnabled()) {
+      var pitchCard = el('div'); pitchCard.style.marginTop = '14px';
+      var pitchBtn = el('button', 'btn small', 'Draft team narrative with AI');
+      var pitchBox = el('div', 'topic'); pitchBox.style.display = state.lastTeamPitch ? 'block' : 'none';
+      pitchBox.style.marginTop = '10px';
+      function renderPitch(data) {
+        pitchBox.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+          '<strong style="font-size:14px;color:var(--text-primary);">' + esc(data.headline || 'Team Composition & Complementarity Justification') + '</strong>' +
+          '<button class="btn ghost small" id="copyPitchBtn">Copy</button></div>' +
+          '<div style="font-size:13.5px;line-height:1.6;color:var(--text-secondary);white-space:pre-wrap;">' + esc(data.narrative || '') + '</div>' +
+          '<div class="hint" style="margin-top:8px;">Automatically included in your downloaded HTML proposal report.</div>';
+        var cp = pitchBox.querySelector('#copyPitchBtn');
+        if (cp) {
+          cp.onclick = function () {
+            navigator.clipboard.writeText((data.headline ? data.headline + '\n\n' : '') + data.narrative).then(function () {
+              toast('Copied narrative to clipboard!');
+            });
+          };
+        }
+      }
+      if (state.lastTeamPitch) renderPitch(state.lastTeamPitch);
+      pitchBtn.onclick = function () {
+        pitchBtn.disabled = true; pitchBtn.textContent = 'Writing narrative...';
+        GCX.llm.draftTeamPitch(team, rfp.text).then(function (res) {
+          state.lastTeamPitch = res;
+          renderPitch(res);
+          pitchBox.style.display = 'block';
+          toast('Drafted team justification narrative');
+        }).catch(function (e) { toast(e.message, true); })
+        .then(function () { pitchBtn.disabled = false; pitchBtn.textContent = 'Regenerate team narrative'; });
+      };
+      pitchCard.appendChild(pitchBtn);
+      pitchCard.appendChild(pitchBox);
+      teamCard.appendChild(pitchCard);
+    } else {
+      var aiTip = el('div', 'hint');
+      aiTip.style.cssText = 'margin-top:12px;padding:8px 12px;background:var(--bg-surface-subtle);border-radius:var(--radius-sm);border:1px dashed var(--border-subtle);display:flex;align-items:center;gap:8px;';
+      aiTip.innerHTML = '<span><strong>Optional AI Integration:</strong> Enable the language model in <a href="#" id="gotoLlmLink">Settings</a> to draft team justification narratives.</span>';
+      teamCard.appendChild(aiTip);
+      var lk = aiTip.querySelector('#gotoLlmLink');
+      if (lk) lk.onclick = function (e) { e.preventDefault(); setView('settings'); };
     }
     box.appendChild(teamCard);
 
@@ -362,18 +558,23 @@
       'table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #D8D0BC;padding:7px 8px;text-align:left;font-size:13px}' +
       '.muted{color:#5B5546}.mem{border:1px solid #D8D0BC;border-radius:3px;padding:10px 12px;margin:8px 0;background:#FBF9F1}';
     var h = [];
-    h.push('<h1>Grant Crosswalk — RFP report</h1>');
+    h.push('<h1>Grant Crosswalk: RFP report</h1>');
     h.push('<p class="muted">Generated ' + new Date().toLocaleString() + '. All analysis performed locally.</p>');
     h.push('<h2>Opportunity</h2><p>' + esc(rfp.text.slice(0, 900)) + (rfp.text.length > 900 ? '…' : '') + '</p>');
     h.push('<h2>Recommended team</h2>');
     h.push('<p><b>Coverage</b> ' + pct(team.coverage) + '% &nbsp; <b>Complementarity</b> ' + team.complementarity.toFixed(2) +
       ' &nbsp; <b>Overlap</b> ' + team.redundancy.toFixed(2) + ' &nbsp; <b>Disciplines</b> ' + team.interdisciplinarity + ' &nbsp; <b>Team fit</b> ' + pct(team.teamFit) + '%</p>');
     team.members.forEach(function (m, i) {
-      h.push('<div class="mem"><b>' + (i + 1) + '. ' + esc(m.profile.name) + '</b> <span class="muted">' + esc(m.profile.affiliation || '') + ' — relevance ' + m.relevance.toFixed(2) + '</span><br>' +
+      h.push('<div class="mem"><b>' + (i + 1) + '. ' + esc(m.profile.name) + '</b> <span class="muted">' + esc(m.profile.affiliation || '') + ' (relevance ' + m.relevance.toFixed(2) + ')</span><br>' +
         'Contributes: ' + m.contributes.slice(0, 6).map(function (c) { return '<span class="chip">' + esc(title(c.term)) + '</span>'; }).join('') + '</div>');
     });
+    if (state.lastTeamPitch && state.lastTeamPitch.narrative) {
+      h.push('<h2>Executive Team Justification</h2>');
+      if (state.lastTeamPitch.headline) h.push('<p><b>' + esc(state.lastTeamPitch.headline) + '</b></p>');
+      h.push('<div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;background:#FBF9F1;border-left:4px solid #8A6425;padding:12px 16px;border-radius:4px;margin:12px 0;">' + esc(state.lastTeamPitch.narrative) + '</div>');
+    }
     if (poolGaps.length) h.push('<h2>Capacity gaps (no one covers)</h2><p>' + poolGaps.slice(0, 14).map(function (g) { return '<span class="chip" style="background:#F1DBD1;color:#6E2D20">' + esc(title(g.term)) + '</span>'; }).join('') + '</p>');
-    h.push('<h2>Collaboration topics</h2><ol>' + topics.map(function (t) { return '<li>' + esc(t.title || t.text) + (t.detail || t.rationale ? ' <span class="muted">— ' + esc(t.detail || t.rationale) + '</span>' : '') + '</li>'; }).join('') + '</ol>');
+    h.push('<h2>Collaboration topics</h2><ol>' + topics.map(function (t) { return '<li>' + esc(t.title || t.text) + (t.detail || t.rationale ? ' <span class="muted">(' + esc(t.detail || t.rationale) + ')</span>' : '') + '</li>'; }).join('') + '</ol>');
     h.push('<h2>Full ranking</h2><table><tr><th>#</th><th>Scholar</th><th>Score</th><th>Relevance</th><th>Top matches</th></tr>');
     results.forEach(function (r, i) {
       h.push('<tr><td>' + (i + 1) + '</td><td>' + esc(r.profile.name) + '</td><td>' + pct(r.composite) + '</td><td>' + r.relevance.toFixed(2) + '</td><td>' +
@@ -396,11 +597,36 @@
     }
     var corpus = GCX.engine.buildCorpus(state.profiles);
     var pairs = GCX.engine.complementaryPairs(state.profiles, corpus, 6);
-    $('pairsList').innerHTML = pairs.map(function (p, i) {
-      return '<div class="rank-item"><div class="rank-head"><span class="rank-num">' + (i + 1) + '</span>' +
+    var pBox = $('pairsList'); pBox.innerHTML = '';
+    pairs.forEach(function (p, i) {
+      var it = el('div', 'rank-item');
+      var simNote = (p.similarity < 0.08 ? 'very distinct strengths' : p.similarity < 0.3 ? 'complementary with common ground' : 'overlapping');
+      it.innerHTML = '<div class="rank-head"><span class="rank-num">' + (i + 1) + '</span>' +
         '<span class="rank-name">' + esc(p.a.name) + ' <span class="faint">+</span> ' + esc(p.b.name) + '</span></div>' +
-        '<div class="hint" style="margin-top:4px">overlap ' + p.similarity.toFixed(2) + ' · ' + (p.similarity < 0.08 ? 'very distinct strengths' : p.similarity < 0.3 ? 'complementary with common ground' : 'overlapping') + '</div></div>';
-    }).join('');
+        '<div class="hint" style="margin-top:4px">overlap ' + p.similarity.toFixed(2) + ' · ' + simNote + '</div>';
+      if (GCX.llm && GCX.llm.isEnabled()) {
+        var synBtn = el('button', 'btn ghost small', 'Explain synergy with AI');
+        synBtn.style.marginTop = '6px';
+        var synText = el('div', 'hint');
+        synText.style.cssText = 'display:none;margin-top:6px;padding:8px 12px;background:var(--bg-surface-subtle);border-radius:var(--radius-xs);border-left:3px solid var(--brand-primary);color:var(--text-primary);';
+        synBtn.onclick = (function (a, b, btn, box) {
+          return function () {
+            btn.disabled = true; btn.textContent = 'Analyzing synergy...';
+            GCX.llm.explainPairSynergy(a, b).then(function (text) {
+              box.textContent = text;
+              box.style.display = 'block';
+              btn.style.display = 'none';
+            }).catch(function (e) {
+              toast(e.message, true);
+              btn.disabled = false; btn.textContent = 'Explain synergy with AI';
+            });
+          };
+        })(p.a, p.b, synBtn, synText);
+        it.appendChild(synBtn);
+        it.appendChild(synText);
+      }
+      pBox.appendChild(it);
+    });
     var bridges = GCX.engine.bridgeScholars(state.profiles, corpus);
     $('bridgesList').innerHTML = bridges.slice(0, 6).map(function (b, i) {
       return '<div class="rank-item"><div class="rank-head"><span class="rank-num">' + (i + 1) + '</span>' +
@@ -453,8 +679,8 @@
   // ---------- find funding (one scholar vs many open RFPs) ----------
   function renderFundingScholarPicker() {
     var sel = $('fundingScholarSelect');
-    if (!state.profiles.length) { sel.innerHTML = '<option value="">(no scholars in roster \u2014 paste a CV below instead)</option>'; return; }
-    sel.innerHTML = state.profiles.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + (p.affiliation ? ' \u2014 ' + esc(p.affiliation) : '') + '</option>'; }).join('');
+    if (!state.profiles.length) { sel.innerHTML = '<option value="">(no scholars in roster: paste a CV below instead)</option>'; return; }
+    sel.innerHTML = state.profiles.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + (p.affiliation ? ' (' + esc(p.affiliation) + ')' : '') + '</option>'; }).join('');
   }
 
   function fundingProfile() {
@@ -464,12 +690,375 @@
     return state.profiles.filter(function (p) { return p.id === id; })[0] || null;
   }
 
+  // ---------- Funding Strategy Hub (Boolean Strategy & Agency Portals) ----------
+  function renderFundingHub(profile, queries, portals) {
+    var box = $('fundingResults'); box.innerHTML = '';
+
+    // 1. Scholar Header Card
+    var head = el('div', 'card pad');
+    var groups = GCX.extract.groupCapabilities(profile);
+    var methods = groups.method || [];
+    var disciplines = groups.discipline || [];
+    var themes = groups.theme || [];
+
+    var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:10px;">' +
+      '<div style="display:flex;align-items:center;gap:12px;">' +
+        '<div class="avatar" style="background:' + avatarColor(profile.name || '?') + ';width:42px;height:42px;font-size:16px;">' + initials(profile.name || '?') + '</div>' +
+        '<div>' +
+          '<h2 style="margin:0;font-size:20px;">' + esc(profile.name) + '</h2>' +
+          '<div class="aff" style="font-size:13px;color:var(--text-muted);">' + esc(profile.affiliation || 'Researcher Profile') + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<span class="badge green" style="font-size:12px;padding:4px 10px;">Funding Strategy Hub</span>' +
+    '</div>';
+
+    var allChips = disciplines.slice(0, 3).map(function (c) { return { term: c.term, category: 'discipline' }; })
+      .concat(methods.slice(0, 4).map(function (c) { return { term: c.term, category: 'method' }; }))
+      .concat(themes.slice(0, 3).map(function (c) { return { term: c.term, category: 'theme' }; }));
+
+    if (allChips.length) {
+      headerHtml += '<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border-subtle);">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+          '<span class="hint" style="font-weight:600;">Detected Research Strengths (click any tag to copy):</span>' +
+          '<button class="btn ghost small" id="copyAllTagsBtn" style="font-size:11px;padding:2px 8px;">Copy All Tags</button>' +
+        '</div>' +
+        conceptChips(allChips) +
+      '</div>';
+    }
+
+    head.innerHTML = headerHtml;
+    box.appendChild(head);
+
+    // Wire click on individual chips to copy
+    var chipEls = head.querySelectorAll('.chip');
+    chipEls.forEach(function (ch) {
+      ch.style.cursor = 'pointer';
+      ch.title = 'Click to copy "' + ch.textContent.trim() + '"';
+      ch.onclick = function () {
+        var t = ch.textContent.trim();
+        navigator.clipboard.writeText(t).then(function () { toast('Copied "' + t + '"'); });
+      };
+    });
+
+    var copyTagsBtn = head.querySelector('#copyAllTagsBtn');
+    if (copyTagsBtn) {
+      copyTagsBtn.onclick = function () {
+        var allTerms = allChips.map(function (c) { return c.term; }).join(', ');
+        navigator.clipboard.writeText(allTerms).then(function () { toast('Copied all tags to clipboard!'); });
+      };
+    }
+
+    // 2. Instructions Banner
+    var guideCard = el('div', 'card pad');
+    guideCard.style.cssText = 'margin-top:14px;background:var(--bg-surface-subtle);border:1px solid var(--border-default);';
+    guideCard.innerHTML = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+      '<strong style="font-size:14px;color:var(--text-primary);">Search Workflow</strong>' +
+      '</div>' +
+      '<p class="hint" style="margin:0 0 10px;line-height:1.5;">Federal agency portals (NSF, Grants.gov, NIH, DOE) frequently update their search interfaces. Using recommended Boolean combinations ensures accurate, current results across portals:</p>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;font-size:12.5px;">' +
+        '<div style="padding:10px;background:var(--bg-surface);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">' +
+          '<strong>1. Pick &amp; Copy Query</strong>' +
+          '<div style="color:var(--text-muted);margin-top:4px;">Select Precision, Broad, or Interdisciplinary below and click <b>Copy Query</b>.</div>' +
+        '</div>' +
+        '<div style="padding:10px;background:var(--bg-surface);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">' +
+          '<strong>2. Launch Agency Portal</strong>' +
+          '<div style="color:var(--text-muted);margin-top:4px;">Click the direct official portal link for NSF, Grants.gov, NIH, or DOE.</div>' +
+        '</div>' +
+        '<div style="padding:10px;background:var(--bg-surface);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">' +
+          '<strong>3. Paste &amp; Search (Ctrl+V)</strong>' +
+          '<div style="color:var(--text-muted);margin-top:4px;">Paste the Boolean string directly into the agency search bar for up-to-date results.</div>' +
+        '</div>' +
+      '</div>';
+    box.appendChild(guideCard);
+
+    // 3. Recommended Boolean Query Cards
+    var querySection = el('div', 'card pad');
+    querySection.style.marginTop = '16px';
+    querySection.innerHTML = '<div class="section-title"><h2>Recommended Boolean Keyword Combinations</h2><span class="badge blue">Tailored for Research Grants</span></div>' +
+      '<p class="hint" style="margin-top:-6px;">Boolean combinations tailored for federal grant search engines. Click <b>Copy Query</b> on the query style that fits your proposal objective:</p>' +
+      '<div id="booleanQueryList" style="display:flex;flex-direction:column;gap:12px;margin-top:14px;"></div>';
+    box.appendChild(querySection);
+
+    var queryListEl = querySection.querySelector('#booleanQueryList');
+    var queryTypes = ['precision', 'broad', 'interdisciplinary', 'solicitation'];
+    var badgeClassMap = {
+      precision: 'badge green',
+      broad: 'badge blue',
+      interdisciplinary: 'badge violet',
+      solicitation: 'badge amber'
+    };
+
+    queryTypes.forEach(function (k) {
+      var item = queries[k];
+      if (!item || !item.query) return;
+
+      var qCard = el('div', '', '');
+      qCard.style.cssText = 'padding:14px;background:var(--bg-surface-subtle);border-radius:var(--radius-md);border:1px solid var(--border-subtle);';
+
+      var qHead = el('div', '', '');
+      qHead.style.cssText = 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:6px;';
+      qHead.innerHTML = '<div style="display:flex;align-items:center;gap:8px;">' +
+        '<strong style="font-size:14px;color:var(--text-primary);">' + esc(item.title) + '</strong>' +
+        '<span class="' + (badgeClassMap[k] || 'badge') + '" style="font-size:11px;">' + esc(item.tag) + '</span>' +
+        '</div>';
+
+      var btnGroup = el('div', '', '');
+      btnGroup.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+
+      var copyBtn = el('button', 'btn small', 'Copy Query');
+      copyBtn.style.padding = '4px 12px';
+      copyBtn.style.fontSize = '12px';
+      copyBtn.onclick = function () {
+        navigator.clipboard.writeText(item.query).then(function () {
+          copyBtn.textContent = '✓ Copied to clipboard!';
+          copyBtn.classList.add('green');
+          toast('Copied ' + item.title + ' to clipboard!');
+          setTimeout(function () {
+            copyBtn.textContent = 'Copy Query';
+            copyBtn.classList.remove('green');
+          }, 2500);
+        });
+      };
+
+      var googleA = el('a', 'btn secondary small', 'Search on Google ↗');
+      googleA.style.padding = '4px 10px';
+      googleA.style.fontSize = '11.5px';
+      googleA.target = '_blank';
+      googleA.rel = 'noopener';
+      var federalSites = '(site:grants.gov OR site:nsf.gov OR site:nih.gov OR site:energy.gov OR site:darpa.mil)';
+      googleA.href = 'https://www.google.com/search?q=' + encodeURIComponent(federalSites + ' ' + item.query);
+      googleA.title = 'Search federal agency sites on Google using this exact Boolean query';
+
+      btnGroup.appendChild(copyBtn);
+      btnGroup.appendChild(googleA);
+      qHead.appendChild(btnGroup);
+
+      var qExpl = el('p', 'hint', esc(item.explanation));
+      qExpl.style.margin = '0 0 8px';
+      qExpl.style.fontSize = '12px';
+
+      var qCode = el('div', '', '');
+      qCode.style.cssText = 'font-family:var(--font-mono);font-size:12.5px;color:var(--text-primary);background:var(--bg-surface);padding:10px 12px;border-radius:var(--radius-sm);border:1px solid var(--border-default);white-space:pre-wrap;word-break:break-word;user-select:all;cursor:pointer;';
+      qCode.title = 'Click to copy this query';
+      qCode.textContent = item.query;
+      qCode.onclick = function () {
+        navigator.clipboard.writeText(item.query).then(function () {
+          toast('Copied query to clipboard!');
+        });
+      };
+
+      qCard.appendChild(qHead);
+      qCard.appendChild(qExpl);
+      qCard.appendChild(qCode);
+      queryListEl.appendChild(qCard);
+    });
+
+    // 4. Official Agency Launchpad
+    var agencySection = el('div', 'card pad');
+    agencySection.style.marginTop = '16px';
+    agencySection.innerHTML = '<div class="section-title"><h2>Official Funding Agency Portals</h2><span class="sub">Verified Direct Entrypoints</span></div>' +
+      '<p class="hint" style="margin-top:-6px;">Click any agency portal to open their active opportunities search page in a new tab, then paste your copied Boolean query directly:</p>' +
+      '<div id="agencyPortalGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:14px;"></div>';
+    box.appendChild(agencySection);
+
+    var portalGridEl = agencySection.querySelector('#agencyPortalGrid');
+    portals.forEach(function (portal) {
+      var pCard = el('div', '', '');
+      pCard.style.cssText = 'display:flex;flex-direction:column;justify-content:space-between;padding:14px;background:var(--bg-surface-subtle);border-radius:var(--radius-md);border:1px solid var(--border-subtle);';
+
+      var topPart = el('div', '', '');
+      var bClass = 'badge ' + (portal.badgeClass || '');
+      topPart.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
+        '<strong style="font-size:15px;color:var(--text-primary);">' + esc(portal.agency) + '</strong>' +
+        '<span class="' + bClass + '" style="font-size:10.5px;">' + esc(portal.badge) + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;font-weight:500;">' + esc(portal.fullName) + '</div>' +
+        '<p class="hint" style="margin:0 0 10px;font-size:11.5px;line-height:1.4;">' + esc(portal.tip) + '</p>';
+
+      var btnRow = el('div', '', '');
+      btnRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;';
+
+      var directA = el('a', 'btn small', esc(portal.directActionLabel || 'Open Search Portal ↗'));
+      directA.href = portal.directUrl;
+      directA.target = '_blank';
+      directA.rel = 'noopener';
+      directA.style.fontSize = '12px';
+      directA.style.padding = '4px 10px';
+
+      var deepA = el('a', 'btn secondary small', esc(portal.deepActionLabel || 'Google Index ↗'));
+      deepA.href = portal.deepSearchUrl;
+      deepA.target = '_blank';
+      deepA.rel = 'noopener';
+      deepA.style.fontSize = '11px';
+      deepA.style.padding = '4px 8px';
+      deepA.title = 'Search with complete precision Boolean query on Google';
+
+      btnRow.appendChild(directA);
+      btnRow.appendChild(deepA);
+
+      if (portal.broadSearchUrl) {
+        var broadA = el('a', 'btn ghost small', 'Google Broad ↗');
+        broadA.href = portal.broadSearchUrl;
+        broadA.target = '_blank';
+        broadA.rel = 'noopener';
+        broadA.style.fontSize = '11px';
+        broadA.style.padding = '4px 8px';
+        broadA.title = 'Search with broad Boolean query on Google';
+        btnRow.appendChild(broadA);
+      }
+
+      if (portal.extraUrl) {
+        var extraA = el('a', 'btn ghost small', esc(portal.extraLabel || 'Extra ↗'));
+        extraA.href = portal.extraUrl;
+        extraA.target = '_blank';
+        extraA.rel = 'noopener';
+        extraA.style.fontSize = '11px';
+        extraA.style.padding = '4px 8px';
+        btnRow.appendChild(extraA);
+      }
+
+      pCard.appendChild(topPart);
+      pCard.appendChild(btnRow);
+      portalGridEl.appendChild(pCard);
+    });
+
+    // 5. Optional AI Agency Strategy Advisor
+    var aiCard = el('div', 'card pad');
+    aiCard.style.marginTop = '16px';
+    if (GCX.llm && GCX.llm.isEnabled()) {
+      aiCard.innerHTML = '<div class="section-title"><h2>Agency Strategy &amp; Alignment</h2><span class="badge amber">Optional AI</span></div>' +
+        '<p class="hint" style="margin-top:-6px;">Use the configured language model to analyze this scholar\'s capabilities and recommend agency directorates (e.g. NSF CISE vs ENG, NIH Institutes, DOE programs) and mechanism types (CAREER, R01, EAGER, BAA).</p>' +
+        '<button class="btn small" id="generateAgencyStrategyBtn" style="margin-top:8px;">Generate Agency Strategy Analysis</button>' +
+        '<div id="agencyStrategyResult" style="display:none;margin-top:14px;padding:14px;background:var(--bg-surface-subtle);border-radius:var(--radius-md);border:1px solid var(--border-default);"></div>';
+
+      box.appendChild(aiCard);
+
+      var stratBtn = aiCard.querySelector('#generateAgencyStrategyBtn');
+      var stratResult = aiCard.querySelector('#agencyStrategyResult');
+      stratBtn.onclick = function () {
+        stratBtn.disabled = true; stratBtn.textContent = 'Generating agency strategy...';
+        GCX.llm.draftAgencyStrategy(profile, queries).then(function (strategy) {
+          var sHtml = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">' +
+            '<strong style="font-size:14px;color:var(--text-primary);">Funding Strategy Analysis for ' + esc(profile.name) + '</strong>' +
+            '<button class="btn ghost small" id="copyStrategyBtn" style="font-size:11px;padding:2px 8px;">Copy Strategy</button>' +
+            '</div>';
+
+          if (strategy.executiveSummary) {
+            sHtml += '<div style="margin-bottom:12px;"><div class="hint" style="font-weight:600;margin-bottom:4px;">Funding Summary:</div>' +
+              '<div style="font-size:13px;line-height:1.5;color:var(--text-secondary);">' + esc(strategy.executiveSummary) + '</div></div>';
+          }
+
+          if (strategy.recommendedAgencies && strategy.recommendedAgencies.length) {
+            sHtml += '<div style="margin-bottom:12px;"><div class="hint" style="font-weight:600;margin-bottom:6px;">Recommended Agency Divisions &amp; Mechanisms:</div>' +
+              '<div style="display:flex;flex-direction:column;gap:8px;">';
+            strategy.recommendedAgencies.forEach(function (rec) {
+              sHtml += '<div style="padding:10px;background:var(--bg-surface);border-radius:var(--radius-sm);border:1px solid var(--border-subtle);">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+                  '<strong style="font-size:13px;color:var(--text-primary);">' + esc(rec.agency) + '</strong>' +
+                  '<span class="badge blue" style="font-size:10px;">' + esc(rec.directorateOrDivision || '') + '</span>' +
+                '</div>' +
+                (rec.mechanisms ? '<div style="font-size:12px;color:var(--primary);font-weight:600;margin-bottom:4px;">Mechanisms: ' + esc(rec.mechanisms) + '</div>' : '') +
+                (rec.pitchAngle ? '<div style="font-size:12px;color:var(--text-secondary);line-height:1.4;">' + esc(rec.pitchAngle) + '</div>' : '') +
+                '</div>';
+            });
+            sHtml += '</div></div>';
+          }
+
+          if (strategy.strategicAdvice) {
+            sHtml += '<div><div class="hint" style="font-weight:600;margin-bottom:4px;">Review Panel Positioning:</div>' +
+              '<div style="font-size:12.5px;color:var(--text-secondary);line-height:1.4;">' + esc(strategy.strategicAdvice) + '</div></div>';
+          }
+
+          stratResult.innerHTML = sHtml;
+          stratResult.style.display = 'block';
+
+          var cpStrat = stratResult.querySelector('#copyStrategyBtn');
+          if (cpStrat) {
+            cpStrat.onclick = function () {
+              var fullStrat = (strategy.executiveSummary || '') + '\n\n' +
+                (strategy.recommendedAgencies || []).map(function (r) {
+                  return r.agency + ' (' + r.directorateOrDivision + '):\nMechanisms: ' + r.mechanisms + '\nPitch: ' + r.pitchAngle;
+                }).join('\n\n') + '\n\n' +
+                (strategy.strategicAdvice || '');
+              navigator.clipboard.writeText(fullStrat).then(function () {
+                toast('Copied funding strategy to clipboard!');
+              });
+            };
+          }
+
+          toast('Agency strategy recommendations generated');
+        }).catch(function (e) {
+          toast(e.message, true);
+        }).then(function () {
+          stratBtn.disabled = false;
+          stratBtn.textContent = 'Regenerate Agency Strategy';
+        });
+      };
+    } else {
+      aiCard.innerHTML = '<div class="section-title"><h2>Agency Strategy &amp; Alignment</h2></div>' +
+        '<p class="hint" style="margin-top:-6px;">Optional AI integration: Configure your API key in <a href="#" id="gotoSettingsFundingLink">Settings</a> to generate agency directorate alignments, review panel positioning, and target grant mechanisms (NSF CAREER, NIH R01, DARPA BAA) for this scholar.</p>';
+      box.appendChild(aiCard);
+      var lk = aiCard.querySelector('#gotoSettingsFundingLink');
+      if (lk) lk.onclick = function (e) { e.preventDefault(); setView('settings'); };
+    }
+  }
+
+  function searchFunding() {
+    var profile = fundingProfile();
+    if (!profile) { toast('Pick a scholar or paste a CV first.', true); return; }
+
+    var booleanQueries = GCX.opportunities.buildBooleanQueries(profile);
+    if (!booleanQueries) {
+      toast('Could not extract enough distinctive terms from this profile to build queries. Try adding tags or pasting a longer CV.', true);
+      return;
+    }
+    var portals = GCX.opportunities.getAgencyPortals(profile, booleanQueries);
+    renderFundingHub(profile, booleanQueries, portals);
+  }
+
+  // ---------- Optional Direct Grants.gov in-browser query ----------
+  function runDirectGrantsGovApi() {
+    var profile = fundingProfile();
+    if (!profile) { toast('Pick a scholar or paste a CV first.', true); return; }
+    var btn = $('directApiQueryBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Querying Grants.gov API...'; }
+
+    var overrides = {
+      enabled: true,
+      agencyFilter: $('fundingAgency').value.trim().toUpperCase(),
+      onlyOpenAndForecasted: $('fundingOpenOnly').checked
+    };
+    GCX.opportunities.searchForProfile(profile, overrides)
+      .then(function (r) { renderFundingResults(profile, r.keywords, r.ranked, r.fromCache); })
+      .catch(function (e) {
+        var kws = GCX.opportunities.topKeywords(profile, 4);
+        renderFundingFallback(kws, e.message, profile);
+      })
+      .then(function () {
+        if (btn) { btn.disabled = false; btn.textContent = 'Run Direct API Call'; }
+      });
+  }
+
   function renderFundingResults(profile, keywords, ranked, fromCache) {
     var box = $('fundingResults'); box.innerHTML = '';
     var head = el('div', 'card pad');
-    head.innerHTML = '<div class="section-title"><h2>Matches for ' + esc(profile.name) + '</h2><span class="sub">' + (fromCache ? 'from cache' : 'live from Grants.gov') + '</span></div>' +
-      '<p class="hint" style="margin-top:-6px">Searched with: ' + conceptChips(keywords.map(function (k) { return { term: k, category: 'phrase' }; })) + '</p>';
+    var portalData = GCX.opportunities.portalSearchUrls(keywords || []);
+
+    head.innerHTML = '<div class="section-title"><h2>Live Matches for ' + esc(profile.name) + '</h2><span class="sub">' + (fromCache ? 'from local cache' : 'live from Grants.gov') + '</span></div>' +
+      '<p class="hint" style="margin-top:-6px">Searched with: ' + conceptChips(keywords.map(function (k) { return { term: k, category: 'phrase' }; })) + '</p>' +
+      '<div style="margin-top:12px;padding:10px 14px;background:var(--bg-surface-subtle);border-radius:var(--radius-sm);border:1px solid var(--border-color);font-size:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
+        '<span><strong>Official Live Portals:</strong> Explore more live solicitations for these terms:</span>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+          (portalData.primary ? '<a class="btn secondary small" href="' + esc(portalData.primary) + '" target="_blank" rel="noopener" style="font-size:11px;padding:3px 8px;">Grants.gov for "' + esc(portalData.primaryTerm) + '" ↗</a>' : '') +
+          '<button class="btn ghost small" id="backToHubBtn" style="font-size:11px;padding:3px 8px;">← Return to Funding Strategy Hub</button>' +
+        '</div>' +
+      '</div>';
+
     box.appendChild(head);
+    var backBtn = head.querySelector('#backToHubBtn');
+    if (backBtn) {
+      backBtn.onclick = function () { searchFunding(); };
+    }
 
     if (!ranked.length) {
       box.appendChild(el('div', 'empty card pad', '<div class="big">\uD83D\uDCED</div><p>No open or forecasted opportunities came back for these terms. Try a broader agency filter, or fewer / different search terms.</p>'));
@@ -493,57 +1082,70 @@
       if (r.matched.length) { var m = el('div', 'matched'); m.innerHTML = '<span class="hint">Matches: </span>' + conceptChips(r.matched.slice(0, 8)); it.appendChild(m); }
       var rationale = el('div', 'hint', ''); rationale.style.cssText = 'display:none;margin-top:6px'; it.appendChild(rationale);
       it._rationaleEl = rationale;
+      if (GCX.llm && GCX.llm.isEnabled()) {
+        var pitchBtn = el('button', 'btn ghost small', 'Draft Concept Note');
+        pitchBtn.style.marginTop = '6px';
+        pitchBtn.onclick = (function (prof, opp, btn) {
+          return function () {
+            btn.disabled = true; btn.textContent = 'Generating concept note...';
+            GCX.llm.draftConceptNote(prof, opp).then(function (note) {
+              $('modalTitle').textContent = 'Concept Note: ' + (opp.title || '');
+              var mBody = $('modalBody'); mBody.innerHTML = '';
+              var aimsHtml = (note.aims || []).map(function (a) {
+                return '<li style="margin-bottom:6px;"><b>' + esc(a.aim || '') + '</b>: ' + esc(a.description || '') + '</li>';
+              }).join('');
+              mBody.innerHTML = '<div style="margin-bottom:14px;"><span class="badge green">Proposal Concept</span> <strong style="font-size:15px;margin-left:6px;">' + esc(note.title || opp.title) + '</strong></div>' +
+                '<div style="margin-bottom:12px;"><strong>Summary:</strong><p style="margin:4px 0 0;line-height:1.5;">' + esc(note.abstract || '') + '</p></div>' +
+                (aimsHtml ? '<div style="margin-bottom:12px;"><strong>Specific Aims:</strong><ul style="padding-left:20px;margin-top:4px;">' + aimsHtml + '</ul></div>' : '') +
+                (note.impact ? '<div style="margin-bottom:12px;"><strong>Broader Impacts & Agency Alignment:</strong><p style="margin:4px 0 0;line-height:1.5;">' + esc(note.impact) + '</p></div>' : '');
+              var mFoot = $('modalFooter'); mFoot.innerHTML = '';
+              var copyBtn = el('button', 'btn', 'Copy Concept Note');
+              copyBtn.onclick = function () {
+                var fullText = (note.title ? 'Working Title: ' + note.title + '\n\n' : '') +
+                  'Abstract:\n' + (note.abstract || '') + '\n\n' +
+                  'Specific Aims:\n' + (note.aims || []).map(function(a){ return (a.aim || '') + ': ' + (a.description || ''); }).join('\n') + '\n\n' +
+                  'Impact:\n' + (note.impact || '');
+                navigator.clipboard.writeText(fullText).then(function () { toast('Concept note copied to clipboard!'); });
+              };
+              var closeB = el('button', 'btn secondary', 'Close'); closeB.onclick = closeModal;
+              mFoot.appendChild(closeB); mFoot.appendChild(copyBtn);
+              $('modalBackdrop').classList.add('open');
+            }).catch(function (e) { toast(e.message, true); })
+            .then(function () { btn.disabled = false; btn.textContent = 'Draft Concept Note'; });
+          };
+        })(profile, o, pitchBtn);
+        it.appendChild(pitchBtn);
+      }
       listCard.appendChild(it);
     });
     box.appendChild(listCard);
-
-    if (GCX.llm && GCX.llm.isEnabled()) {
-      var matchBtn = el('button', 'btn secondary small', 'Draft AI rationale for top matches'); matchBtn.style.margin = '14px 2px';
-      matchBtn.onclick = function () {
-        matchBtn.disabled = true; matchBtn.textContent = 'Drafting...';
-        GCX.llm.explainMatches(profile, ranked, keywords)
-          .then(function (arr) {
-            var items = listCard.querySelectorAll('.rank-item');
-            arr.forEach(function (a) {
-              var idx = ranked.findIndex(function (r) { return r.opportunity.title === a.title; });
-              if (idx === -1 || !items[idx]) return;
-              var slot = items[idx]._rationaleEl;
-              slot.style.display = ''; slot.textContent = a.detail;
-            });
-            toast('Drafted rationale for ' + arr.length + ' match(es)');
-          })
-          .catch(function (e) { toast(e.message, true); })
-          .then(function () { matchBtn.disabled = false; matchBtn.textContent = 'Draft AI rationale for top matches'; });
-      };
-      box.appendChild(matchBtn);
-    }
   }
 
-  function renderFundingFallback(keywords, message) {
+  function renderFundingFallback(keywords, message, profile) {
     var box = $('fundingResults'); box.innerHTML = '';
-    var c = el('div', 'card pad callout warn');
-    var url = GCX.opportunities.manualSearchUrl(keywords || []);
-    c.innerHTML = '<strong>Could not search Grants.gov directly.</strong><p style="margin:8px 0">' + esc(message) + '</p>' +
-      (keywords && keywords.length ? '<a class="btn secondary small" href="' + esc(url) + '" target="_blank" rel="noopener">Open this search on grants.gov \u2192</a>' : '');
-    box.appendChild(c);
-  }
+    var c = el('div', 'card pad');
+    c.style.border = '1px solid var(--border-color)';
 
-  function searchFunding() {
-    var profile = fundingProfile();
-    if (!profile) { toast('Pick a scholar or paste a CV first.', true); return; }
-    var btn = $('fundingSearchBtn'); btn.disabled = true; btn.textContent = 'Searching\u2026';
-    $('fundingResults').innerHTML = '<div class="empty card pad"><div class="big">\u23F3</div><p>Querying Grants.gov\u2026</p></div>';
-    var overrides = {
-      agencyFilter: $('fundingAgency').value.trim().toUpperCase(),
-      onlyOpenAndForecasted: $('fundingOpenOnly').checked
-    };
-    GCX.opportunities.searchForProfile(profile, overrides)
-      .then(function (r) { renderFundingResults(profile, r.keywords, r.ranked, r.fromCache); })
-      .catch(function (e) {
-        var kws = GCX.opportunities.topKeywords(profile, 4);
-        renderFundingFallback(kws, e.message);
-      })
-      .then(function () { btn.disabled = false; btn.textContent = 'Search Grants.gov'; });
+    var kws = (keywords && keywords.length) ? keywords : (profile ? GCX.opportunities.topKeywords(profile, 4) : []);
+    var scholarName = profile ? profile.name : 'Scholar';
+
+    var html = '<div class="section-title">' +
+      '<h3 style="margin:0;display:flex;align-items:center;gap:8px;">' +
+      '<span class="badge amber" style="font-size:12px;">Direct API Notice</span> Direct Query Blocked by Browser' +
+      '</h3></div>' +
+      '<p style="margin:10px 0 14px;color:var(--text-muted);line-height:1.5;">' + esc(message) + '</p>' +
+      '<p style="margin:0 0 14px;line-height:1.5;">Browsers block direct cross-origin API calls to government domains without a server proxy. Use the recommended <strong>Funding Strategy Hub</strong> instead:</p>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      '<button class="btn primary small" id="fallbackToHubBtn">Return to Funding Strategy Hub</button>' +
+      '</div>';
+
+    c.innerHTML = html;
+    box.appendChild(c);
+
+    var hubBtn = c.querySelector('#fallbackToHubBtn');
+    if (hubBtn) {
+      hubBtn.onclick = function () { searchFunding(); };
+    }
   }
 
   // ---------- settings / LLM ----------
@@ -558,6 +1160,7 @@
     });
     GCX.opportunities.getSettings().then(function (cfg) {
       $('fundingEnabled').checked = !!cfg.enabled;
+      if ($('fundingDirectToggle')) $('fundingDirectToggle').checked = !!cfg.enabled;
       $('fundingMaxKw').value = cfg.maxKeywords; $('fundingMaxKwV').textContent = cfg.maxKeywords;
       $('fundingRows').value = cfg.rows; $('fundingRowsV').textContent = cfg.rows;
       $('fundingProxyUrl').value = cfg.proxyBaseUrl || '';
@@ -575,13 +1178,19 @@
       maxKeywords: +$('fundingMaxKw').value,
       rows: +$('fundingRows').value,
       proxyBaseUrl: $('fundingProxyUrl').value.trim()
-    }).then(function () { updateFundingBadge(); toast('Funding search settings saved'); });
+    }).then(function () {
+      if ($('fundingDirectToggle')) $('fundingDirectToggle').checked = $('fundingEnabled').checked;
+      updateFundingBadge();
+      toast('Funding search settings saved');
+    });
   }
   function testFunding() {
     saveFunding();
-    $('fundingStatus').textContent = 'Testing\u2026';
+    $('fundingStatus').textContent = 'Testing connection to Grants.gov…';
     GCX.opportunities.testConnection()
-      .then(function (r) { $('fundingStatus').textContent = 'Connected. Grants.gov returned ' + r.hitCount + ' result(s) for a test query.'; })
+      .then(function (r) {
+        $('fundingStatus').textContent = 'Connected! Grants.gov returned ' + r.hitCount + ' result(s) for live query.';
+      })
       .catch(function (e) { $('fundingStatus').textContent = 'Failed: ' + e.message; });
   }
   function clearFundingCache() {
@@ -592,8 +1201,8 @@
     openai: '',
     gemini: 'Uses Gemini\u2019s OpenAI-compatible endpoint. Get a key from Google AI Studio.',
     grok: 'Uses xAI\u2019s OpenAI-compatible endpoint. Get a key from the xAI console.',
-    ollama: 'No API key needed \u2014 Ollama ignores whatever you send. Make sure `ollama serve` is running. Ollama allows localhost by default, so this just works if you\u2019re also running this app locally; if you\u2019re using a hosted copy of this app instead, Ollama will block it unless you set OLLAMA_ORIGINS to that page\u2019s address.',
-    custom: 'Point this at any OpenAI-compatible /chat/completions endpoint \u2014 Azure OpenAI, OpenRouter, a self-hosted gateway, vLLM, LM Studio, etc.'
+    ollama: 'No API key needed (Ollama ignores whatever you send). Make sure `ollama serve` is running. Ollama allows localhost by default, so this works if you are running this app locally; if you are using a hosted copy of this app instead, Ollama will block it unless you set OLLAMA_ORIGINS to that page address.',
+    custom: 'Point this at any OpenAI-compatible /chat/completions endpoint (Azure OpenAI, OpenRouter, a self-hosted gateway, vLLM, LM Studio, etc.).'
   };
   function applyProviderUI(providerKey) {
     var preset = (GCX.llm.PROVIDERS && GCX.llm.PROVIDERS[providerKey]) || {};
@@ -691,6 +1300,19 @@
       if (GCX.store && GCX.store.setSetting) GCX.store.setSetting('onboardingDismissed', true);
     };
 
+    // quick demo & sample loader
+    if ($('loadDemoBtn')) $('loadDemoBtn').onclick = loadDemoCohort;
+    if ($('loadSampleRfpBtn')) $('loadSampleRfpBtn').onclick = loadSampleRfp;
+    if ($('presetBalanced')) $('presetBalanced').onclick = function () { applyWeightsPreset('balanced'); };
+    if ($('presetRelevance')) $('presetRelevance').onclick = function () { applyWeightsPreset('scientific'); };
+    if ($('presetFunding')) $('presetFunding').onclick = function () { applyWeightsPreset('track'); };
+    if ($('rosterSearchInput')) {
+      $('rosterSearchInput').oninput = function () {
+        state.searchQuery = this.value.trim();
+        renderRoster();
+      };
+    }
+
     // dropzone
     var dz = $('dropzone');
     ['dragenter', 'dragover'].forEach(function (ev) { dz.addEventListener(ev, function (e) { e.preventDefault(); dz.classList.add('drag'); }); });
@@ -704,15 +1326,17 @@
     $('exportRosterBtn').onclick = exportRoster;
     $('importRosterBtn').onclick = function () { $('importInput').click(); };
     $('importInput').onchange = function (e) { if (e.target.files[0]) importRoster(e.target.files[0]); e.target.value = ''; };
-    $('clearRosterBtn').onclick = function () {
-      if (!state.profiles.length) return;
-      if (!confirm('Remove all ' + state.profiles.length + ' scholars from this device?')) return;
-      state.profiles = []; if (GCX.store.available) GCX.store.clearProfiles(); renderRoster(); updateCount(); toast('Roster cleared');
-    };
+    $('clearRosterBtn').onclick = resetAllData;
+    if ($('resetAllDataBtn')) $('resetAllDataBtn').onclick = resetAllData;
 
     // RFP
     ['wRelevance', 'wRecent', 'wFunding', 'teamSize'].forEach(function (id) {
-      $(id).oninput = function () { $(id + 'V').textContent = $(id).value; };
+      $(id).oninput = function () {
+        $(id + 'V').textContent = $(id).value;
+        ['presetBalanced', 'presetRelevance', 'presetFunding'].forEach(function (pid) {
+          if ($(pid)) $(pid).classList.remove('active');
+        });
+      };
     });
     $('analyzeBtn').onclick = analyze;
     $('rfpUploadBtn').onclick = function () {
@@ -720,12 +1344,28 @@
       inp.onchange = function () { if (inp.files[0]) GCX.parse.parseFile(inp.files[0]).then(function (r) { $('rfpText').value = r.text; if (r.warning) toast(r.warning, true); else toast('Loaded ' + inp.files[0].name); }); };
       inp.click();
     };
+    if ($('clearRfpBtn')) $('clearRfpBtn').onclick = function () { clearRfp(); };
 
     // team explorer
     $('buildTeamBtn').onclick = buildComplementaryTeam;
 
     // find funding
     $('fundingSearchBtn').onclick = searchFunding;
+    if ($('fundingScholarSelect')) {
+      $('fundingScholarSelect').onchange = function () {
+        if ($('fundingScholarSelect').value) searchFunding();
+      };
+    }
+    if ($('directApiQueryBtn')) {
+      $('directApiQueryBtn').onclick = runDirectGrantsGovApi;
+    }
+    if ($('fundingDirectToggle')) {
+      $('fundingDirectToggle').onchange = function () {
+        var on = this.checked;
+        if ($('fundingEnabled')) $('fundingEnabled').checked = on;
+        GCX.opportunities.setSettings({ enabled: on }).then(updateFundingBadge);
+      };
+    }
     ['fundingMaxKw', 'fundingRows'].forEach(function (id) {
       $(id).oninput = function () { $(id + 'V').textContent = $(id).value; };
     });
@@ -738,7 +1378,7 @@
       applyProviderUI($('llmProvider').value);
       // Auto-fill the base URL with the new provider's default, but only if
       // the field is currently empty or still held a previous provider's
-      // default — never clobber something the user deliberately typed.
+      // default: never clobber something the user deliberately typed.
       var preset = (GCX.llm.PROVIDERS && GCX.llm.PROVIDERS[$('llmProvider').value]) || {};
       var allDefaults = Object.keys(GCX.llm.PROVIDERS || {}).map(function (k) { return GCX.llm.PROVIDERS[k].defaultBaseUrl; });
       if (!$('llmBaseUrl').value.trim() || allDefaults.indexOf($('llmBaseUrl').value.trim()) !== -1) {
@@ -756,6 +1396,30 @@
     $('modalClose').onclick = closeModal;
     $('modalBackdrop').addEventListener('click', function (e) { if (e.target === $('modalBackdrop')) closeModal(); });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+
+    // PWA install prompt
+    var deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault();
+      deferredInstallPrompt = e;
+      var btn = $('installPwaBtn');
+      if (btn) {
+        btn.style.display = 'inline-flex';
+        btn.onclick = function () {
+          btn.style.display = 'none';
+          deferredInstallPrompt.prompt();
+          deferredInstallPrompt.userChoice.then(function (choice) {
+            if (choice.outcome === 'accepted') toast('Installing Grant Crosswalk...');
+            deferredInstallPrompt = null;
+          });
+        };
+      }
+    });
+    window.addEventListener('appinstalled', function () {
+      var btn = $('installPwaBtn');
+      if (btn) btn.style.display = 'none';
+      toast('Grant Crosswalk installed successfully as a desktop app!');
+    });
   }
 
   // ---------- init ----------

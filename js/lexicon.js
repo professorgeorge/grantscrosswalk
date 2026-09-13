@@ -1,5 +1,5 @@
 /*
- * lexicon.js — domain knowledge for local, LLM-free CV analysis.
+ * lexicon.js: domain knowledge for local, LLM-free CV analysis.
  *
  * The lexicon does three jobs:
  *   1. Supplies stopwords so salience scoring is not swamped by boilerplate.

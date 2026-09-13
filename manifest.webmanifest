@@ -1,13 +1,13 @@
 {
   "name": "Grant Crosswalk",
   "short_name": "Crosswalk",
-  "description": "Match your researchers to funding opportunities and funding opportunities to your researchers — plus complementary team-building — from CVs alone, locally and privately.",
-  "start_url": ".",
-  "scope": ".",
+  "description": "Match researchers to funding opportunities and assemble complementary teams from CVs, locally and privately.",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#F2EEE1",
-  "theme_color": "#8A6425",
+  "background_color": "#0f172a",
+  "theme_color": "#b45309",
   "categories": ["productivity", "education", "utilities"],
   "icons": [
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

@@ -1,5 +1,5 @@
 /*
- * extract.js — turn CV text into a structured scholar profile.
+ * extract.js: turn CV text into a structured scholar profile.
  *
  * Two signals are combined:
  *   (a) Lexicon capabilities: canonical methods, disciplines, funders,

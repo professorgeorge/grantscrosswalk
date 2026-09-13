@@ -1,5 +1,5 @@
 /*
- * opportunities.js — OPTIONAL live funding search. Off by default; nothing
+ * opportunities.js: OPTIONAL live funding search. Off by default; nothing
  * here makes a network call unless the user turns it on in Settings.
  *
  * What it does: takes one scholar's profile (built by extract.js, exactly
@@ -99,10 +99,12 @@
 
   // ---- Grants.gov client ---------------------------------------------------
 
+  var PUBLIC_CORS_RELAY = 'https://cors.eu.org/';
+
   function fetchJson(url, body, opts) {
     opts = opts || {};
     var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, opts.timeoutMs || 12000) : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, opts.timeoutMs || 15000) : null;
     return fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -114,15 +116,21 @@
       return res.json();
     }).catch(function (e) {
       if (timer) clearTimeout(timer);
+      // Automatic relay fallback for GitHub Pages / static hosting:
+      // If direct browser fetch fails due to CORS and we haven't already relayed,
+      // transparently retry via the public HTTPS CORS relay to fetch live Grants.gov RFPs.
+      if (e instanceof TypeError && !opts.viaProxy && !opts.retriedViaRelay && url.indexOf(PUBLIC_CORS_RELAY) === -1) {
+        return fetchJson(PUBLIC_CORS_RELAY + url, body, Object.assign({}, opts, { retriedViaRelay: true }));
+      }
       if (e.name === 'AbortError') throw new Error((opts.viaProxy ? 'Your local relay' : 'Grants.gov') + ' did not respond in time.');
       // A bare "Failed to fetch" / TypeError is the browser's generic name for
       // several problems. Which one is most likely depends on whether this
       // went straight to Grants.gov or through the optional local relay.
       if (e instanceof TypeError) {
         if (opts.viaProxy) {
-          throw new Error('Could not reach your local relay at ' + url + '. Check that `node tools/grants-proxy.js` is running, and that the URL in Settings matches.');
+          throw new Error('Could not reach your local relay at ' + url + '. Make sure the app server (`launch-pwa.bat` or `node server.js`) or `node tools/grants-proxy.js` is running.');
         }
-        throw new Error('Could not reach Grants.gov directly from the browser (likely blocked by the browser\u2019s cross-origin policy, or you are offline). Use the manual search link instead, or run the small local relay described in the README.');
+        throw new Error('Could not reach Grants.gov directly from the browser (likely blocked by CORS policy or offline). Use the manual search link instead, or run the local relay via `launch-pwa.bat`.');
       }
       throw e;
     });
@@ -181,16 +189,18 @@
 
   function searchOnce(keyword, cfg) {
     var body = { keyword: keyword, rows: cfg.rows, startRecordNum: 0 };
-    if (cfg.agencyFilter) body.agencies = [cfg.agencyFilter];
-    if (cfg.onlyOpenAndForecasted) body.oppStatuses = ['forecasted', 'posted'];
-    return fetchJson(urlsFor(cfg).search, body, { viaProxy: !!cfg.proxyBaseUrl }).then(function (json) {
+    if (cfg.agencyFilter) body.agencies = cfg.agencyFilter;
+    if (cfg.onlyOpenAndForecasted) body.oppStatuses = 'forecasted|posted';
+    var isProxy = !!cfg.proxyBaseUrl || isLocalBrowser();
+    return fetchJson(urlsFor(cfg).search, body, { viaProxy: isProxy }).then(function (json) {
       return findHitsArray(json).map(normalizeHit);
     });
   }
 
   function enrichOne(opp, cfg) {
     if (!opp.id) return Promise.resolve(opp);
-    return fetchJson(urlsFor(cfg).fetch, { opportunityId: opp.id }, { viaProxy: !!cfg.proxyBaseUrl }).then(function (json) {
+    var isProxy = !!cfg.proxyBaseUrl || isLocalBrowser();
+    return fetchJson(urlsFor(cfg).fetch, { opportunityId: opp.id }, { viaProxy: isProxy }).then(function (json) {
       var rec = (json && json.data) || json || {};
       var synopsisObj = rec.synopsis || rec.synopsisDetail || rec;
       var text = longestStringField(synopsisObj, []);
@@ -201,11 +211,19 @@
 
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  function isLocalBrowser() {
+    return typeof window !== 'undefined' && window.location &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  }
+
   // Resolve which base to call: direct to Grants.gov by default, or through
-  // the optional local relay (tools/grants-proxy.js) if the user has pointed
-  // one at a running instance, for browsers that block the direct call.
+  // the local relay (server.js / tools/grants-proxy.js) if running locally or
+  // if the user configured a custom relay URL in Settings.
   function urlsFor(cfg) {
-    var base = (cfg.proxyBaseUrl || '').trim().replace(/\/+$/, '');
+    var base = ((cfg && cfg.proxyBaseUrl) || '').trim().replace(/\/+$/, '');
+    if (!base && isLocalBrowser()) {
+      base = window.location.origin;
+    }
     if (!base) return { search: SEARCH_URL, fetch: FETCH_URL };
     return { search: base + '/v1/api/search2', fetch: base + '/v1/api/fetchOpportunity' };
   }
@@ -314,17 +332,221 @@
 
   function testConnection() {
     return getSettings().then(function (cfg) {
-      return searchOnce('research', Object.assign({}, cfg, { rows: 1 }));
-    }).then(function (hits) {
-      return { ok: true, hitCount: hits.length };
+      return searchOnce('research', Object.assign({}, cfg, { rows: 1 })).then(function (hits) {
+        return { ok: true, hitCount: hits.length };
+      });
     });
   }
 
   function manualSearchUrl(keywords) {
-    return MANUAL_SEARCH_URL + '?keywords=' + encodeURIComponent((keywords || []).join(' '));
+    if (typeof keywords === 'string') {
+      return MANUAL_SEARCH_URL + '?keywords=' + encodeURIComponent(keywords.trim());
+    }
+    var list = Array.isArray(keywords) ? keywords.filter(Boolean) : [];
+    if (!list.length) return MANUAL_SEARCH_URL;
+    // Grants.gov searches are most accurate and targeted with 1 focused term.
+    var primary = list[0];
+    return MANUAL_SEARCH_URL + '?keywords=' + encodeURIComponent(primary);
   }
+
+  function portalSearchUrls(keywords) {
+    var list = Array.isArray(keywords) ? keywords.filter(Boolean) : (keywords ? [keywords] : []);
+    var primary = list[0] || '';
+    return {
+      primary: manualSearchUrl(primary),
+      primaryTerm: primary,
+      allTermsUrl: MANUAL_SEARCH_URL + '?keywords=' + encodeURIComponent(list.slice(0, 3).join(' ')),
+      byKeyword: list.map(function (kw) {
+        return {
+          keyword: kw,
+          grantsGovUrl: MANUAL_SEARCH_URL + '?keywords=' + encodeURIComponent(kw),
+          nsfUrl: 'https://www.nsf.gov/funding/search?query=' + encodeURIComponent(kw),
+          nihUrl: 'https://grants.nih.gov/funding/searchguide/index.html#/keywords=' + encodeURIComponent(kw)
+        };
+      })
+    };
+  }
+
   function detailUrl(opp) {
     return opp && opp.id ? DETAIL_URL + opp.id : '';
+  }
+
+  // ---- Recommended Boolean Query Generator --------------------------------
+  // Converts extracted capabilities and keywords into high-precision,
+  // copy-paste Boolean queries designed for official federal agency portals.
+
+  function buildBooleanQueries(profile) {
+    if (!profile) return null;
+    var kws = topKeywords(profile, 6);
+    if (!kws || !kws.length) return null;
+
+    var groups = GCX.extract ? GCX.extract.groupCapabilities(profile) : { method: [], discipline: [], theme: [] };
+    var methods = (groups.method || []).map(function (m) { return m.term; }).filter(Boolean);
+    var disciplines = (groups.discipline || []).map(function (d) { return d.term; }).filter(Boolean);
+    var themes = (groups.theme || []).map(function (t) { return t.term; }).filter(Boolean);
+
+    function quote(term) {
+      term = (term || '').trim();
+      return (term.indexOf(' ') !== -1) ? '"' + term + '"' : term;
+    }
+
+    var primary = kws[0];
+    var secondary = kws.slice(1, 4);
+
+    // 1. Precision Query (High Fit / Niche)
+    var precision = '';
+    if (secondary.length) {
+      precision = quote(primary) + ' AND (' + secondary.map(quote).join(' OR ') + ')';
+    } else {
+      precision = quote(primary);
+    }
+
+    // 2. Broad Discovery Query (High Recall)
+    var broad = '(' + kws.slice(0, 4).map(quote).join(' OR ') + ')';
+
+    // 3. Interdisciplinary Crosswalk (Method ✕ Domain)
+    var interdisciplinary = '';
+    var methodTerms = methods.slice(0, 2);
+    var domainTerms = disciplines.concat(themes).slice(0, 2);
+    if (methodTerms.length && domainTerms.length) {
+      interdisciplinary = '(' + methodTerms.map(quote).join(' OR ') + ') AND (' + domainTerms.map(quote).join(' OR ') + ')';
+    } else if (kws.length >= 4) {
+      interdisciplinary = '(' + kws.slice(0, 2).map(quote).join(' OR ') + ') AND (' + kws.slice(2, 4).map(quote).join(' OR ') + ')';
+    } else {
+      interdisciplinary = quote(primary) + ' AND ("interdisciplinary" OR "collaborative")';
+    }
+
+    // 4. Federal Solicitations Target (Tailored for active calls / RFPs)
+    var solicitation = '(' + kws.slice(0, 2).map(quote).join(' OR ') + ') AND ("solicitation" OR "program announcement" OR "call for proposals" OR "BAA")';
+
+    return {
+      primaryKeyword: primary,
+      allKeywords: kws,
+      precision: {
+        title: 'Precision & Core Niche',
+        tag: 'High Fit',
+        query: precision,
+        explanation: 'Combines your primary research domain with supporting methodologies to find specific, targeted solicitations while filtering out tangential calls.'
+      },
+      broad: {
+        title: 'Broad Discovery Net',
+        tag: 'High Recall',
+        query: broad,
+        explanation: 'Casts a comprehensive net across agency directorates. Best for initial exploration and multi-disciplinary umbrella initiatives.'
+      },
+      interdisciplinary: {
+        title: 'Interdisciplinary Crosswalk',
+        tag: 'Method ✕ Domain',
+        query: interdisciplinary,
+        explanation: 'Pairs technical methodologies with application domains. Federal agencies heavily prioritize translating computational/engineering methods into real-world impact.'
+      },
+      solicitation: {
+        title: 'Federal RFP & BAA Discovery',
+        tag: 'Active Solicitations',
+        query: solicitation,
+        explanation: 'Specially formatted with federal solicitation identifiers (BAA, RFP, Program Announcement) to surface active funding calls.'
+      }
+    };
+  }
+
+  function getAgencyPortals(profile, queries) {
+    queries = queries || buildBooleanQueries(profile);
+    var primaryTerm = (queries && queries.primaryKeyword) || 'research';
+    var precisionQuery = (queries && queries.precision && queries.precision.query) || ('"' + primaryTerm + '"');
+    var broadQuery = (queries && queries.broad && queries.broad.query) || ('"' + primaryTerm + '"');
+
+    return [
+      {
+        id: 'grants-gov',
+        agency: 'Grants.gov',
+        fullName: 'Federal Clearinghouse (All 26 Grant-Making Agencies)',
+        badge: 'All Federal Agencies',
+        badgeClass: 'blue',
+        directUrl: 'https://www.grants.gov/search-grants',
+        directActionLabel: 'Open Grants.gov Search ↗',
+        deepSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:grants.gov ' + precisionQuery),
+        deepActionLabel: 'Google Grants.gov Index ↗',
+        broadSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:grants.gov ' + broadQuery),
+        tip: 'Click "Open Grants.gov Search", paste your copied query into the Keywords box, and check "Posted" under Opportunity Status.',
+        portalNote: 'Portal link. Grants.gov drops direct URL query parameters on initial page load; pasting the Boolean query inside ensures up-to-date results.'
+      },
+      {
+        id: 'nsf',
+        agency: 'NSF',
+        fullName: 'National Science Foundation',
+        badge: 'NSF Directorates',
+        badgeClass: 'green',
+        directUrl: 'https://www.nsf.gov/funding/opportunities',
+        directActionLabel: 'Open NSF Opportunities ↗',
+        deepSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:nsf.gov/funding ' + precisionQuery),
+        deepActionLabel: 'Google NSF Solicitations ↗',
+        broadSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:nsf.gov/funding ' + broadQuery),
+        extraUrl: 'https://www.nsf.gov/awardsearch/',
+        extraLabel: 'NSF Award Search (Past Grants) ↗',
+        tip: 'Explore active Program Solicitations and Dear Colleague Letters (DCLs) across CISE, ENG, BIO, MPS, and SBE directorates.',
+        portalNote: 'Official NSF opportunities hub. Use Google NSF Solicitations for direct indexing into active PDF solicitations.'
+      },
+      {
+        id: 'nih',
+        agency: 'NIH',
+        fullName: 'National Institutes of Health Guide & RePORTER',
+        badge: 'NIH & Biomedical',
+        badgeClass: 'violet',
+        directUrl: 'https://grants.nih.gov/funding/nih-guide-for-grants-and-contracts',
+        directActionLabel: 'Open NIH Guide ↗',
+        deepSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:grants.nih.gov/grants/guide ' + precisionQuery),
+        deepActionLabel: 'Google NIH Notices ↗',
+        broadSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:grants.nih.gov/grants/guide ' + broadQuery),
+        extraUrl: 'https://reporter.nih.gov/',
+        extraLabel: 'NIH RePORTER Database ↗',
+        tip: 'Search active Notices of Special Interest (NOSIs), Program Announcements (PAs), and Requests for Applications (RFAs).',
+        portalNote: 'Official NIH contract & grant guide. NIH RePORTER allows searching funded grants and program officers.'
+      },
+      {
+        id: 'doe',
+        agency: 'DOE Office of Science',
+        fullName: 'Department of Energy (Office of Science)',
+        badge: 'Energy & Computing',
+        badgeClass: 'amber',
+        directUrl: 'https://science.osti.gov/grants/foas/open',
+        directActionLabel: 'Open DOE FOAs ↗',
+        deepSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('(site:science.osti.gov/grants/foas/open OR site:energy.gov/science/funding-opportunities) ' + precisionQuery),
+        deepActionLabel: 'Google DOE Solicitations ↗',
+        broadSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('(site:science.osti.gov/grants/foas/open OR site:energy.gov/science/funding-opportunities) ' + broadQuery),
+        tip: 'Search open Funding Opportunity Announcements (FOAs) for Advanced Scientific Computing Research (ASCR), Basic Energy Sciences (BES), and BER.',
+        portalNote: 'Direct access to open FOAs and the annual open solicitation for foundational research.'
+      },
+      {
+        id: 'darpa',
+        agency: 'DARPA & DoD',
+        fullName: 'Defense Advanced Research Projects Agency',
+        badge: 'DoD & Defense',
+        badgeClass: 'brick',
+        directUrl: 'https://www.darpa.mil/work-with-us/opportunities',
+        directActionLabel: 'Open DARPA Solicitations ↗',
+        deepSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:darpa.mil/work-with-us/opportunities ' + precisionQuery),
+        deepActionLabel: 'Google DARPA BAAs ↗',
+        broadSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:darpa.mil/work-with-us/opportunities ' + broadQuery),
+        extraUrl: 'https://www.defensesbir.gov/',
+        extraLabel: 'Defense SBIR/STTR ↗',
+        tip: 'Look for Broad Agency Announcements (BAAs), Disruption Opportunities, and the Young Faculty Award (YFA).',
+        portalNote: 'Direct link to DARPA office opportunities (I2O, DSO, MTO, BTO).'
+      },
+      {
+        id: 'sam-gov',
+        agency: 'SAM.gov',
+        fullName: 'Federal Contract Opportunities & Solicitations',
+        badge: 'All Agencies Contracts',
+        badgeClass: 'slate',
+        directUrl: 'https://sam.gov/content/opportunities',
+        directActionLabel: 'Open SAM.gov Opportunities ↗',
+        deepSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:sam.gov/opp ' + precisionQuery),
+        deepActionLabel: 'Google SAM Solicitations ↗',
+        broadSearchUrl: 'https://www.google.com/search?q=' + encodeURIComponent('site:sam.gov/opp ' + broadQuery),
+        tip: 'Official government system for federal contract opportunities, solicitations, pre-solicitations, and agency BAAs.',
+        portalNote: 'Official clearinghouse for broad agency announcements and interagency contract solicitations.'
+      }
+    ];
   }
 
   GCX.opportunities = {
@@ -332,9 +554,12 @@
     getSettings: getSettings,
     setSettings: setSettings,
     topKeywords: topKeywords,
+    buildBooleanQueries: buildBooleanQueries,
+    getAgencyPortals: getAgencyPortals,
     searchForProfile: searchForProfile,
     testConnection: testConnection,
     manualSearchUrl: manualSearchUrl,
+    portalSearchUrls: portalSearchUrls,
     detailUrl: detailUrl,
     _rankForProfile: rankForProfile, // exposed for the offline test harness
     _urlsFor: urlsFor                // exposed for the offline test harness

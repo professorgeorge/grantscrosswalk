@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * grants-proxy.js — an optional, zero-dependency local relay for the Find
+ * grants-proxy.js: an optional, zero-dependency local relay for the Find
  * Funding feature (js/opportunities.js).
  *
  * Why this exists: Grant Crosswalk is a static, serverless app by
