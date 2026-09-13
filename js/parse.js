@@ -298,12 +298,29 @@
       var isFlate = /\/FlateDecode/.test(header);
       var isImage = /\/Subtype\s*\/Image|\/Image\b/.test(header);
       if (isImage) continue;
-      var chunk = bytes.subarray(start, end);
-      // Trim a trailing EOL that belongs to the keyword, not the data.
+      var trimEnd = end;
+      while (trimEnd > start && (bytes[trimEnd - 1] === 10 || bytes[trimEnd - 1] === 13 || bytes[trimEnd - 1] === 32)) {
+        trimEnd--;
+      }
+      var chunk = bytes.subarray(start, trimEnd);
       var decoded;
       if (isFlate) {
         try { decoded = decodeUtf8(await inflate(chunk, 'deflate')); }
-        catch (e) { try { decoded = decodeUtf8(await inflate(chunk, 'deflate-raw')); } catch (e2) { continue; } }
+        catch (e) {
+          try { decoded = decodeUtf8(await inflate(chunk, 'deflate-raw')); }
+          catch (e2) {
+            var lenM = /\/Length\s+(\d+)/.exec(header);
+            if (lenM) {
+              var sLen = parseInt(lenM[1], 10);
+              if (sLen > 0 && start + sLen <= bytes.length) {
+                try { decoded = decodeUtf8(await inflate(bytes.subarray(start, start + sLen), 'deflate')); }
+                catch (e3) {
+                  try { decoded = decodeUtf8(await inflate(bytes.subarray(start, start + sLen), 'deflate-raw')); } catch (e4) { continue; }
+                }
+              } else continue;
+            } else continue;
+          }
+        }
       } else {
         decoded = decodeLatin1(chunk);
       }
@@ -328,7 +345,7 @@
     try {
       if (ext === 'pdf') {
         var t = await fromPdf(bytes);
-        return { text: t, method: 'pdf', warning: t.length < 40 ? 'Little or no text recovered from this PDF. It may be scanned or use custom fonts. Try pasting the text, or enable enhanced PDF parsing in Settings.' : '' };
+        return { text: t, method: 'pdf', warning: t.length < 40 ? 'Little or no text recovered from this PDF. Enable "Enhanced PDF parsing (pdf.js)" in the upload box above, or paste the text.' : '' };
       }
       if (ext === 'docx') return { text: await fromDocx(bytes), method: 'docx', warning: '' };
       if (ext === 'doc') return { text: '', method: 'doc', warning: 'Legacy .doc is not supported. Please save as .docx or paste the text.' };

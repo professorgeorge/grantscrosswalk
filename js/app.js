@@ -243,7 +243,14 @@
       try {
         var parsed = await GCX.parse.parseFile(f);
         if (parsed.warning) { warned++; }
-        if (!parsed.text || parsed.text.length < 20) { toast('Little text from ' + f.name + '. ' + (parsed.warning || ''), true); continue; }
+        if (!parsed.text || parsed.text.length < 20) {
+          var advice = '';
+          if (/\.pdf$/i.test(f.name) && !(GCX.pdfjs && GCX.pdfjs.ready)) {
+            advice = ' Tip: Check "Enhanced PDF parsing" above to extract multi-page PDFs.';
+          }
+          toast('Little text from ' + f.name + '. ' + (parsed.warning || '') + advice, true);
+          continue;
+        }
         var prof = GCX.extract.buildProfile(parsed.text, { filename: f.name });
         state.profiles.push(prof);
         await persist(prof);
@@ -1151,7 +1158,10 @@
   // ---------- settings / LLM ----------
   function loadSettings() {
     GCX.store.getSetting('theme', 'system').then(applyTheme);
-    GCX.store.getSetting('pdfEnhanced', false).then(function (v) { $('pdfEnhanced').checked = !!v; if (v) enablePdfJs(); });
+    GCX.store.getSetting('pdfEnhanced', false).then(function (v) {
+      syncPdfEnhancedUI(!!v);
+      if (v) enablePdfJs().then(function () { syncPdfEnhancedUI(true); }).catch(function () {});
+    });
     GCX.llm.getConfig().then(function (cfg) {
       $('llmProvider').value = cfg.provider; $('llmKey').value = cfg.apiKey || ''; $('llmModel').value = cfg.model || '';
       $('llmBaseUrl').value = cfg.baseUrl || ''; $('llmEnabled').checked = !!cfg.enabled; $('llmAllowCv').checked = !!cfg.allowCvText;
@@ -1247,6 +1257,43 @@
   }
 
   // ---------- optional pdf.js ----------
+  function syncPdfEnhancedUI(on) {
+    if ($('pdfEnhanced')) $('pdfEnhanced').checked = !!on;
+    if ($('pdfEnhancedRoster')) $('pdfEnhancedRoster').checked = !!on;
+    var badge = $('pdfJsBadge');
+    if (badge) {
+      if (GCX.pdfjs && GCX.pdfjs.ready) {
+        badge.style.display = 'inline-block';
+        badge.textContent = 'Active';
+        badge.className = 'badge green';
+      } else if (on) {
+        badge.style.display = 'inline-block';
+        badge.textContent = 'Loading…';
+        badge.className = 'badge amber';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  }
+
+  function handlePdfEnhancedChange(on) {
+    syncPdfEnhancedUI(on);
+    GCX.store.setSetting('pdfEnhanced', on);
+    if (on) {
+      enablePdfJs().then(function () {
+        syncPdfEnhancedUI(true);
+        toast('Enhanced PDF parsing ready (pdf.js loaded)');
+      }).catch(function (e) {
+        toast(e.message, true);
+        syncPdfEnhancedUI(false);
+        GCX.store.setSetting('pdfEnhanced', false);
+      });
+    } else {
+      syncPdfEnhancedUI(false);
+      toast('Enhanced PDF parsing disabled (using offline extractor)');
+    }
+  }
+
   function enablePdfJs() {
     if (GCX.pdfjs && GCX.pdfjs.ready) return Promise.resolve();
     return new Promise(function (resolve, reject) {
@@ -1269,6 +1316,7 @@
               });
             }
           };
+          syncPdfEnhancedUI(true);
           resolve();
         } catch (e) { reject(e); }
       };
@@ -1398,10 +1446,12 @@
     };
     $('llmSaveBtn').onclick = saveLlm;
     $('llmTestBtn').onclick = testLlm;
-    $('pdfEnhanced').onchange = function () {
-      var on = $('pdfEnhanced').checked; GCX.store.setSetting('pdfEnhanced', on);
-      if (on) enablePdfJs().then(function () { toast('Enhanced PDF parsing ready'); }).catch(function (e) { toast(e.message, true); $('pdfEnhanced').checked = false; });
-    };
+    if ($('pdfEnhanced')) {
+      $('pdfEnhanced').onchange = function () { handlePdfEnhancedChange(this.checked); };
+    }
+    if ($('pdfEnhancedRoster')) {
+      $('pdfEnhancedRoster').onchange = function () { handlePdfEnhancedChange(this.checked); };
+    }
 
     // modal
     $('modalClose').onclick = closeModal;

@@ -180,8 +180,8 @@ otherwise careful to keep separate.
 Word (`.docx`), plain text, Markdown, RTF, and HTML parse reliably and entirely
 offline. PDF text is extracted by a built-in reader that handles most digitally
 generated PDFs; scanned PDFs and some unusual font encodings will extract poorly.
-For those, paste the text, or enable enhanced PDF parsing in Settings, which
-loads the pdf.js library from a CDN and therefore needs a network connection.
+For those, paste the text, or enable enhanced PDF parsing directly in the upload box (or Settings), which
+loads the Mozilla pdf.js library from a CDN and therefore needs a network connection.
 
 ## How the analysis works
 

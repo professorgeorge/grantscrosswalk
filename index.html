@@ -100,6 +100,20 @@
           </div>
           <input type="file" id="fileInput" multiple accept=".pdf,.docx,.doc,.txt,.md,.rtf,.html,.htm" hidden />
           <input type="file" id="folderInput" webkitdirectory directory multiple hidden />
+          <div class="pdf-enhanced-box" style="margin-top:12px;padding:10px 12px;background:var(--bg-surface-subtle);border:1px solid var(--border-subtle);border-radius:var(--radius-sm)">
+            <label class="small" style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;margin:0">
+              <input type="checkbox" id="pdfEnhancedRoster" style="width:auto;margin-top:3px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+                  <span style="font-weight:600;color:var(--text-primary)">Enhanced PDF parsing (pdf.js)</span>
+                  <span class="badge green" id="pdfJsBadge" style="display:none;font-size:11px">Active</span>
+                </div>
+                <p class="hint" style="margin:2px 0 0;font-size:12px;line-height:1.4">
+                  Recommended for multi-page or complex CVs. Uses pdf.js via CDN for complete text, publication, and grant extraction.
+                </p>
+              </div>
+            </label>
+          </div>
           <div class="divider"></div>
           <label class="field">
             <span>Or paste one CV as text</span>
@@ -306,7 +320,7 @@
         <div class="card pad">
           <div class="section-title"><h2>PDF &amp; data</h2></div>
           <h3 class="small" style="margin-bottom:4px">PDF text extraction</h3>
-          <p class="hint">Built-in extraction works offline for most digital PDFs. Scanned or unusual PDFs may extract poorly; for those, paste the text or enable enhanced parsing (loads pdf.js from a CDN, so it needs a network connection).</p>
+          <p class="hint">Built-in extraction works offline for small/simple digital PDFs. For multi-page, formatted, or complex CVs, enable enhanced parsing (loads Mozilla pdf.js from CDN). This setting is also directly accessible in the Add Scholars upload box.</p>
           <label class="small" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0 16px"><input type="checkbox" id="pdfEnhanced" style="width:auto;margin-top:3px"><span>Enable enhanced PDF parsing (pdf.js via CDN)</span></label>
           <div class="divider"></div>
           <h3 class="small" style="margin-bottom:4px">Data management</h3>
