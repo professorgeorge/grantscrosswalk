@@ -1,6 +1,6 @@
 {
-  "name": "Grant Crosswalk",
-  "short_name": "Crosswalk",
+  "name": "Grants Crosswalk",
+  "short_name": "GrantsCrosswalk",
   "description": "Match researchers to funding opportunities and assemble complementary teams from CVs, locally and privately.",
   "start_url": "./index.html",
   "scope": "./",

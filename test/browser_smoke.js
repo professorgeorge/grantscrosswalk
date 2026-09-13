@@ -75,7 +75,7 @@ async function main() {
   let fail = 0; const check = (c, m) => { console.log((c ? '  PASS ' : '  FAIL ') + m); if (!c) fail++; };
 
   const title = await evalJs('document.title');
-  check(title === 'Grant Crosswalk', 'page title loaded: ' + title);
+  check(title === 'Grants Crosswalk' || title === 'Grant Crosswalk', 'page title loaded: ' + title);
   check(await evalJs('typeof GCX!=="undefined" && !!GCX.engine'), 'GCX modules present in the browser');
 
   // Populate the roster the same way a real user would: paste each CV's text

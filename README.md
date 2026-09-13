@@ -1,4 +1,4 @@
-# Grant Crosswalk
+# Grants Crosswalk
 
 A self-contained, privacy-first web application that reads scholars' CVs, finds
 genuine complementarities among them, and matches them to a research topic or a
@@ -54,7 +54,7 @@ The quickest full-featured way is to serve the folder over a local web server,
 which enables offline installation and the service worker:
 
 ```
-cd scholar-partner-finder
+cd grantscrosswalk
 python3 -m http.server 8000
 ```
 

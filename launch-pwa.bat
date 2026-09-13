@@ -1,15 +1,15 @@
 @echo off
-title Grant Crosswalk PWA Launcher
+title Grants Crosswalk PWA Launcher
 cd /d "%~dp0"
 
 echo ========================================================
-echo   Starting Grant Crosswalk PWA...
+echo   Starting Grants Crosswalk PWA...
 echo ========================================================
 
 :: Start local node server in background if port 8000 not listening
 netstat -ano | findstr :8000 >nul 2>&1
 if %errorlevel% neq 0 (
-    start "Grant Crosswalk Server" /min node server.js
+    start "Grants Crosswalk Server" /min node server.js
     timeout /t 1 /nobreak >nul
 )
 

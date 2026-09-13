@@ -558,7 +558,7 @@
       'table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #D8D0BC;padding:7px 8px;text-align:left;font-size:13px}' +
       '.muted{color:#5B5546}.mem{border:1px solid #D8D0BC;border-radius:3px;padding:10px 12px;margin:8px 0;background:#FBF9F1}';
     var h = [];
-    h.push('<h1>Grant Crosswalk: RFP report</h1>');
+    h.push('<h1>Grants Crosswalk: RFP report</h1>');
     h.push('<p class="muted">Generated ' + new Date().toLocaleString() + '. All analysis performed locally.</p>');
     h.push('<h2>Opportunity</h2><p>' + esc(rfp.text.slice(0, 900)) + (rfp.text.length > 900 ? '…' : '') + '</p>');
     h.push('<h2>Recommended team</h2>');
@@ -1420,7 +1420,7 @@
           btn.style.display = 'none';
           deferredInstallPrompt.prompt();
           deferredInstallPrompt.userChoice.then(function (choice) {
-            if (choice.outcome === 'accepted') toast('Installing Grant Crosswalk...');
+            if (choice.outcome === 'accepted') toast('Installing Grants Crosswalk...');
             deferredInstallPrompt = null;
           });
         };
@@ -1429,7 +1429,7 @@
     window.addEventListener('appinstalled', function () {
       var btn = $('installPwaBtn');
       if (btn) btn.style.display = 'none';
-      toast('Grant Crosswalk installed successfully as a desktop app!');
+      toast('Grants Crosswalk installed successfully as a desktop app!');
     });
   }
 

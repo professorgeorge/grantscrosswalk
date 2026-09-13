@@ -1,8 +1,8 @@
-# Grant Crosswalk PWA PowerShell Launcher
+# Grants Crosswalk PWA PowerShell Launcher
 Set-Location -Path $PSScriptRoot
 
 Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  Starting Grant Crosswalk PWA..." -ForegroundColor Cyan
+Write-Host "  Starting Grants Crosswalk PWA..." -ForegroundColor Cyan
 Write-Host "========================================================" -ForegroundColor Cyan
 
 # Check if port 8000 is running
@@ -37,4 +37,4 @@ if (-not $browserFound) {
     Start-Process "http://localhost:8000"
 }
 
-Write-Host "Grant Crosswalk is now open in standalone app mode at http://localhost:8000" -ForegroundColor Green
+Write-Host "Grants Crosswalk is now open in standalone app mode at http://localhost:8000" -ForegroundColor Green

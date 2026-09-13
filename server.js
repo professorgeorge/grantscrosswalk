@@ -97,7 +97,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n======================================================`);
-  console.log(`  Grant Crosswalk PWA Server running!`);
+  console.log(`  Grants Crosswalk PWA Server running!`);
   console.log(`  Local URL: http://localhost:${PORT}`);
   console.log(`  Close this window to stop the server.`);
   console.log(`======================================================\n`);
